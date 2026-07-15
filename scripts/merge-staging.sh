@@ -13,7 +13,7 @@ case "${WORK}" in
   staging/*|master|develop|HEAD)
     echo "❌ 작업 브랜치(feature/fix/hotfix 등)에서 실행하세요. (현재: ${WORK})"; exit 1 ;;
 esac
-[ -z "$(git status --porcelain)" ] || { echo "❌ 워킹트리 클린 아님 (작업을 먼저 커밋하세요)"; exit 1; }
+[ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 워킹트리 클린 아님 (작업을 먼저 커밋하세요)"; exit 1; }
 
 git fetch origin --prune
 LATEST="$(git branch -r --list 'origin/staging/*' | sed 's#.*origin/##' | sort | tail -1 || true)"
@@ -33,7 +33,10 @@ fi
 BEFORE="$(node -p "require('./package.json').version")"
 node scripts/bump-version.mjs patch >/dev/null
 AFTER="$(node -p "require('./package.json').version")"
-git add -A && git commit -qm "chore: staging deploy ${AFTER}"
+git add package.json
+[ -f package-lock.json ] && git add package-lock.json || true
+[ -f CHANGELOG.md ] && git add CHANGELOG.md || true
+git commit -qm "chore: staging deploy ${AFTER}"
 echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
 
 if ! git push origin "HEAD:${LATEST}"; then
