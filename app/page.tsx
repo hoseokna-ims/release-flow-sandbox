@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { APP_VERSION } from "./version-info";
 
 export default function Home() {
   return (
@@ -12,6 +13,10 @@ export default function Home() {
           height={20}
           priority
         />
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-black/[.08] bg-black/[.03] px-3 py-1 text-sm font-medium text-zinc-600 dark:border-white/[.145] dark:bg-white/[.06] dark:text-zinc-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          현재 버전 v{APP_VERSION}
+        </span>
         <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
           <h1 className="max-w-md text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
             릴리스 플로우 샌드박스
