@@ -11,6 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Version guard (스테이징 버전 검증)
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "package.json version = $VERSION"
+          if [ "${VERSION##*.}" = "0" ]; then
+            echo "::error::스테이징 배포 차단 — 운영 버전($VERSION) 감지 (staging은 patch!=0 이어야 함)"
+            exit 1
+          fi
       - name: (stub) staging 배포 트리거 확인
         run: |
           echo "✅ staging 배포가 트리거됨"
