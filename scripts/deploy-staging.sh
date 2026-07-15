@@ -14,7 +14,7 @@ case "${BRANCH}" in
   *) echo "❌ staging/* 브랜치에서만 실행하세요. (현재: ${BRANCH})"; exit 1 ;;
 esac
 
-if [ -n "$(git status --porcelain)" ]; then
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "❌ 커밋 안 된 변경이 있습니다. (feature 머지 후 커밋 완료 상태에서 실행하세요)"
   exit 1
 fi
@@ -22,7 +22,10 @@ fi
 BEFORE="$(node -p "require('./package.json').version")"
 node scripts/bump-version.mjs patch >/dev/null
 AFTER="$(node -p "require('./package.json').version")"
-git commit -aqm "chore: staging deploy ${AFTER}"
+git add package.json
+[ -f package-lock.json ] && git add package-lock.json || true
+[ -f CHANGELOG.md ] && git add CHANGELOG.md || true
+git commit -qm "chore: staging deploy ${AFTER}"
 echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
 
 if ! git push origin "HEAD:${BRANCH}"; then

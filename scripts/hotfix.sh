@@ -15,7 +15,7 @@ start() {
     *) echo "사용법: ./hotfix.sh start [minor|major]"; exit 1 ;;
   esac
   git fetch origin --prune
-  [ -z "$(git status --porcelain)" ] || { echo "❌ 워킹트리 클린 아님"; exit 1; }
+  [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 워킹트리 클린 아님"; exit 1; }
   read -r behind _ < <(git rev-list --left-right --count "origin/master...master" 2>/dev/null || echo "0 0")
   [ "${behind}" -gt 0 ] && { echo "❌ master 가 origin 보다 뒤처짐 → git pull 후 재시도"; exit 1; }
 
@@ -33,13 +33,16 @@ finish() {
     *) echo "❌ hotfix/* 브랜치에서 실행하세요 (현재: ${BRANCH})"; exit 1 ;;
   esac
   local VERSION="${BRANCH#hotfix/}"
-  [ -z "$(git status --porcelain)" ] || { echo "❌ 수정사항을 먼저 커밋하세요"; exit 1; }
+  [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 수정사항을 먼저 커밋하세요"; exit 1; }
 
   trap 'echo "❌ 핫픽스 finish 중단. git status 확인 후 수동 마무리하세요."' ERR
   echo "▶ bump + changelog (${VERSION})"
   node scripts/bump-version.mjs "${VERSION}" >/dev/null
   node scripts/changelog.mjs "${VERSION}"
-  git add -A && git commit -qm "chore: hotfix ${VERSION}"
+  git add package.json
+  [ -f package-lock.json ] && git add package-lock.json || true
+  [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
+  git commit -qm "chore: hotfix ${VERSION}"
 
   echo "▶ git flow hotfix finish (master·develop 머지 + 태그 ${VERSION})"
   GIT_MERGE_AUTOEDIT=no git flow hotfix finish -m "${VERSION}" "${VERSION}"
