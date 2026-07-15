@@ -10,6 +10,7 @@
     "release": "bash scripts/release.sh",
     "hotfix": "bash scripts/hotfix.sh",
     "staging:new": "bash scripts/new-staging.sh",
+    "staging:merge": "bash scripts/merge-staging.sh",
     "staging:deploy": "bash scripts/deploy-staging.sh"
   },
   "dependencies": {
