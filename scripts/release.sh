@@ -55,7 +55,7 @@ finish() {
   trap 'echo "❌ release finish 중단. git status 확인 후 수동 마무리하세요."' ERR
   echo "▶ bump + changelog (${VERSION})"
   node scripts/bump-version.mjs "${VERSION}" >/dev/null
-  bash scripts/changelog.sh "${VERSION}"
+  node scripts/changelog.mjs "${VERSION}"
   git add -A && git commit -qm "chore: release ${VERSION}"
 
   echo "▶ git flow release finish (master·develop 머지 + 태그 ${VERSION})"
