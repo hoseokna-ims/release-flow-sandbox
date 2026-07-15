@@ -51,6 +51,12 @@ export default function Home() {
             변경 이력
           </a>
         </div>
+        <footer className="mt-8 w-full border-t border-black/[.06] pt-6 text-sm text-zinc-500 dark:border-white/[.1] dark:text-zinc-500">
+          <p>
+            이 환경은 실제 배포에 영향을 주지 않는 릴리스 연습용 샌드박스입니다.
+          </p>
+          <p className="mt-1">© 2026 IMS Mobility · Release Flow Sandbox</p>
+        </footer>
       </main>
     </div>
   );
