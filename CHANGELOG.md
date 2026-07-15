@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0] - 2026-07-15
+
+### Added
+- release-notes 를 PR 유무 기반으로 자동 판별 ([5e8377e](https://github.com/hoseokna-ims/release-flow-sandbox/commit/5e8377e4a35887512d5518c142683502e86803db))
+- CHANGELOG 커밋 해시에 GitHub 커밋 링크 추가 ([f4ed2cc](https://github.com/hoseokna-ims/release-flow-sandbox/commit/f4ed2cc1865b06626616d9000fef4d84e171934e))
+
+
 ## [0.6.0] - 2026-07-15
 
 
