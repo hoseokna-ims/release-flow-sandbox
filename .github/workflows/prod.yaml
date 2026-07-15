@@ -1,0 +1,25 @@
+name: prod deploy (sandbox stub)
+
+# 실제 배포 대신, 실전과 동일한 "버전 가드" 스텝을 태운 뒤 트리거 확인만 출력한다.
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version guard (운영 버전 검증)
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "package.json version = $VERSION"
+          if [ "${VERSION##*.}" != "0" ]; then
+            echo "::error::운영 배포 차단 — 스테이징 버전($VERSION) 감지 (patch는 0이어야 함)"
+            exit 1
+          fi
+      - name: (stub) prod 배포 트리거 확인
+        run: echo "✅ prod 배포가 트리거됨 (version=$(node -p "require('./package.json').version"))"
