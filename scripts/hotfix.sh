@@ -37,7 +37,7 @@ finish() {
 
   trap 'echo "❌ 핫픽스 finish 중단. git status 확인 후 수동 마무리하세요."' ERR
   echo "▶ bump + changelog (${VERSION})"
-  npm version "${VERSION}" --no-git-tag-version >/dev/null
+  node scripts/bump-version.mjs "${VERSION}" >/dev/null
   bash scripts/changelog.sh "${VERSION}"
   git add -A && git commit -qm "chore: hotfix ${VERSION}"
 

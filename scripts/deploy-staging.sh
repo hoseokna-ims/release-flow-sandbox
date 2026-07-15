@@ -20,7 +20,7 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 BEFORE="$(node -p "require('./package.json').version")"
-npm version patch --no-git-tag-version >/dev/null
+node scripts/bump-version.mjs patch >/dev/null
 AFTER="$(node -p "require('./package.json').version")"
 git commit -aqm "chore: staging deploy ${AFTER}"
 echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
