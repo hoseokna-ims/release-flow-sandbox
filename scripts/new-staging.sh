@@ -30,7 +30,7 @@ git switch -c "${BRANCH}" origin/develop
 VERSION="$(node -p "require('./package.json').version")"
 PATCH="${VERSION##*.}"
 if [ "${PATCH}" = "0" ]; then
-  npm version patch --no-git-tag-version >/dev/null
+  node scripts/bump-version.mjs patch >/dev/null
   NEW="$(node -p "require('./package.json').version")"
   git commit -aqm "chore: init staging ${BRANCH} -> ${NEW}"
   echo "  스테이징 버전 초기화: ${VERSION} -> ${NEW}"

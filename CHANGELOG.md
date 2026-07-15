@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0] - 2026-07-15
+
+### Fixed
+- 버전 bump 를 npm version → node 스크립트로 교체 (npm 경고 제거) (b8d04f5)
+
+
 ## [0.4.0] - 2026-07-15
 
 ### Fixed

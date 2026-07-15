@@ -43,7 +43,7 @@ echo "▶ git flow release start ${NEXT}"
 git flow release start "${NEXT}"
 
 echo "▶ bump + changelog"
-npm version "${NEXT}" --no-git-tag-version >/dev/null
+node scripts/bump-version.mjs "${NEXT}" >/dev/null
 bash scripts/changelog.sh "${NEXT}"
 git add -A && git commit -qm "chore: release ${NEXT}"
 

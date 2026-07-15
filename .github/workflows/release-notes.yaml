@@ -1,7 +1,11 @@
 name: GitHub Release notes
 
-# semver 태그(예: 0.2.0) push 시 GitHub Release 자동 생성.
+# semver 태그(예: 0.6.0) push 시 GitHub Release 자동 생성.
 # 배포용 플로팅 태그(staging/prod)는 점 2개 패턴이 아니라 제외됨.
+#
+# 노트 소스 (내용 기반 자동 판별):
+#  - PR 있는 릴리스 → GitHub 자동 노트("What's Changed" + 기여자)
+#  - PR 없는 릴리스(hotfix 등) → CHANGELOG.md 해당 버전 섹션으로 대체
 on:
   push:
     tags:
@@ -18,15 +22,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Create release with auto-generated notes
+      - name: Create GitHub Release (PR 노트, 없으면 CHANGELOG 대체)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            echo "Release ${GITHUB_REF_NAME} already exists — skip."
-          else
-            gh release create "${GITHUB_REF_NAME}" \
-              --title "${GITHUB_REF_NAME}" \
-              --generate-notes \
-              --verify-tag
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — skip."
+            exit 0
           fi
+
+          # 1) GitHub 자동 노트를 미리 생성(릴리스는 아직 안 만듦, 본문만 확인)
+          BODY=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+                   -f tag_name="$TAG" -q .body 2>/dev/null || echo "")
+
+          # 2) PR이 없으면("What's Changed" 없음) CHANGELOG 섹션으로 대체
+          if ! printf '%s' "$BODY" | grep -q "## What's Changed"; then
+            if [ -f CHANGELOG.md ]; then
+              SECTION=$(awk '/^## \['"$TAG"'\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md)
+              [ -n "$SECTION" ] && BODY="$SECTION"
+            fi
+          fi
+
+          # 3) 그래도 비면 최소 안내
+          [ -z "$BODY" ] && BODY="_(자동 릴리스 노트 없음)_"
+
+          gh release create "$TAG" --title "$TAG" --notes "$BODY" --verify-tag
