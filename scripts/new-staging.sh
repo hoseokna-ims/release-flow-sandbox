@@ -14,7 +14,7 @@ DATE="${1:-$(date +%y%m%d)}"
 BRANCH="staging/${DATE}"
 
 git fetch origin --prune
-if [ -n "$(git status --porcelain)" ]; then
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "❌ 워킹트리에 커밋 안 된 변경이 있습니다. 정리 후 다시 실행하세요."
   exit 1
 fi
@@ -42,7 +42,10 @@ VERSION="$(node -p "require('./package.json').version")"
 if [ "${VERSION##*.}" = "0" ]; then
   node scripts/bump-version.mjs patch >/dev/null
   NEW="$(node -p "require('./package.json').version")"
-  git add -A && git commit -qm "chore: init staging ${BRANCH} -> ${NEW}"
+  git add package.json
+  [ -f package-lock.json ] && git add package-lock.json || true
+  [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
+  git commit -qm "chore: init staging ${BRANCH} -> ${NEW}"
   echo "  스테이징 버전 초기화: ${VERSION} -> ${NEW}"
 else
   echo "  이미 스테이징 버전(${VERSION}) 유지"
