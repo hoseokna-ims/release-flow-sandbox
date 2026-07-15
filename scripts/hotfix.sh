@@ -39,7 +39,7 @@ finish() {
   echo "▶ bump + changelog (${VERSION})"
   npm version "${VERSION}" --no-git-tag-version >/dev/null
   bash scripts/changelog.sh "${VERSION}"
-  git commit -aqm "chore: hotfix ${VERSION}"
+  git add -A && git commit -qm "chore: hotfix ${VERSION}"
 
   echo "▶ git flow hotfix finish (master·develop 머지 + 태그 ${VERSION})"
   GIT_MERGE_AUTOEDIT=no git flow hotfix finish -m "${VERSION}" "${VERSION}"
