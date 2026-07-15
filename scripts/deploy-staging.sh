@@ -6,6 +6,7 @@
 # 사용법: ./deploy-staging.sh
 #
 set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 case "${BRANCH}" in
@@ -29,5 +30,5 @@ if ! git push origin "HEAD:${BRANCH}"; then
   exit 1
 fi
 
-sh ./push-tag.sh staging
+sh scripts/push-tag.sh staging
 echo "✅ 스테이징 배포 트리거 완료 (${AFTER})"

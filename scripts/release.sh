@@ -6,6 +6,7 @@
 # 사용법: ./release.sh [minor|major]   (기본 minor)
 #
 set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
 trap 'echo "❌ 릴리스 중단. git status 로 상태 확인 후 수동 마무리하거나 재시도하세요."' ERR
 
 TYPE="${1:-minor}"

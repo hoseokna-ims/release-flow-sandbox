@@ -6,6 +6,7 @@
 # 사용법: ./new-staging.sh [YYMMDD]
 #
 set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
 
 DATE="${1:-$(date +%y%m%d)}"
 BRANCH="staging/${DATE}"

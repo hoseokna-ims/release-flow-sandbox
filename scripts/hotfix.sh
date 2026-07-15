@@ -6,6 +6,7 @@
 #   ./hotfix.sh finish                bump + changelog + finish(머지·태그) + push
 #
 set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
 
 start() {
   local TYPE="${1:-minor}"

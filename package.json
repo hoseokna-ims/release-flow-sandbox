@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "release": "bash scripts/release.sh",
+    "hotfix": "bash scripts/hotfix.sh",
+    "staging:new": "bash scripts/new-staging.sh",
+    "staging:deploy": "bash scripts/deploy-staging.sh"
   },
   "dependencies": {
     "next": "16.2.10",
