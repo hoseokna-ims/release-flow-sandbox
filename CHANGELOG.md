@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.0] - 2026-07-15
+
+### Added
+- release 를 start/finish 2단계로 전환 (원샷 제거) ([75425fd](https://github.com/hoseokna-ims/release-flow-sandbox/commit/75425fd14710208a31724b8a697868816cb21031))
+
+
 ## [0.7.0] - 2026-07-15
 
 ### Added
