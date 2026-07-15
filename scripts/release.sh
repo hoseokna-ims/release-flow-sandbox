@@ -45,7 +45,7 @@ git flow release start "${NEXT}"
 echo "▶ bump + changelog"
 npm version "${NEXT}" --no-git-tag-version >/dev/null
 bash scripts/changelog.sh "${NEXT}"
-git commit -aqm "chore: release ${NEXT}"
+git add -A && git commit -qm "chore: release ${NEXT}"
 
 echo "▶ git flow release finish (master·develop 머지 + 태그 ${NEXT})"
 GIT_MERGE_AUTOEDIT=no git flow release finish -m "${NEXT}" "${NEXT}"
