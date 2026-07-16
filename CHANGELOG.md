@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.16.0] - 2026-07-16
+
+### feature/FE-1018
+- refactor: pre-push 를 imsform 구조로 재작성 (husky 관리 + node -p 버전 읽기) ([bc1064d](https://github.com/hoseokna-ims/release-flow-sandbox/commit/bc1064d0f5074aa6b486376007921ff59b55f4ba))
+- refactor: setup-versioning 에서 core.hooksPath 제거 (husky 가 관리) ([ddbb24b](https://github.com/hoseokna-ims/release-flow-sandbox/commit/ddbb24bd6cabd0882de4946312cbfc1aaaa5025b))
+- chore: husky 도입 — imsform 과 동일한 훅 관리 방식으로 정렬 ([09e5b69](https://github.com/hoseokna-ims/release-flow-sandbox/commit/09e5b691466bb88a95132776b7fe4abd3283ffa9))
+- chore: postinstall 로 setup-versioning 자동 실행 (merge driver 활성화) ([69be39f](https://github.com/hoseokna-ims/release-flow-sandbox/commit/69be39f8b84cd2b3c50de2482dbdbf908e45823b))
+- feat: 로컬 안전망 복원 — merge.ff/pull.ff + pre-push 훅(.husky) ([ce8ec94](https://github.com/hoseokna-ims/release-flow-sandbox/commit/ce8ec9476b0bf7ab9fb096cf98fa6dbac13eeeed))
+- fix: release/hotfix finish push 를 --atomic 으로 (스플릿 방지) ([0f994ed](https://github.com/hoseokna-ims/release-flow-sandbox/commit/0f994ed0f3c64b98736d811a716c6901c81eb0e6))
+
 ## [0.15.0] - 2026-07-16
 
 ### feature/FE-1015
