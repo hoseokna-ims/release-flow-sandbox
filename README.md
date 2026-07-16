@@ -2,6 +2,50 @@
 
 브랜치 전략·버전 자동화·배포 가드까지 릴리스 전 과정을 실제 서비스 영향 없이 연습하기 위한 샌드박스 프로젝트입니다. [Next.js](https://nextjs.org) 기반으로 구성되어 있습니다.
 
+## 배포 명령어
+
+git-flow 기반으로 스테이징/운영 배포를 자동화합니다. 버전은 `package.json` 단일 소스이며 **patch 값**으로 채널을 구분합니다.
+
+- `patch != 0` → **스테이징** (예: `0.18.1`, `0.18.2` …)
+- `patch == 0` → **운영** (예: `0.18.0`, `1.0.0`)
+
+### 스테이징 배포
+
+일회용 통합 브랜치 `staging/YYMMDD`에 여러 작업 브랜치를 모아 반복 배포합니다.
+
+```
+// 1) 사이클 브랜치 생성 (하루 1회, 아무 위치에서나)
+//    origin/develop 기준 staging/YYMMDD 생성 + 이전 미출시 브랜치(carry-over) 안내
+yarn staging:new
+
+// 2) 작업 브랜치 반영 + 배포 (주력) — 브랜치명을 인자로, 여러 개 한 번에 가능
+//    최신 staging 에 --no-ff 머지 → patch +1 → push → 배포 트리거
+yarn staging:merge feature/FE-XXXX [feature/FE-YYYY ...]
+
+// 3) 폴백 — 머지 충돌을 직접 해결·커밋했거나 수동 머지 후 마무리 배포할 때
+yarn staging:deploy
+```
+
+### 운영 배포 (release / hotfix)
+
+실수 배포 방지를 위해 **원샷 실행은 없으며** 반드시 `start` → `finish` 2단계로 진행합니다.
+`finish` 가 bump + CHANGELOG + master/develop 머지 + 태그 + push(배포 트리거)를 처리합니다.
+
+```
+// 정규 릴리스 (develop 기준) — 기본 minor, major 선택 가능
+yarn release start [minor|major]
+//   (선택) 막판 안정화 작업·커밋
+yarn release finish
+
+// 핫픽스 (master 기준) — patch 는 스테이징 전용이므로 핫픽스도 minor 로 올림
+yarn hotfix start [minor|major]
+//   버그 수정 작업·커밋 (또는 브랜치 --no-ff 머지)
+yarn hotfix finish
+```
+
+> 최초 클론 시 `yarn install`(postinstall)이 버전 병합 드라이버·ff 정책·git-flow init 을 자동 등록합니다.
+> git-flow 는 avh 에디션을 권장합니다: `brew install git-flow-avh`
+
 ## Getting Started
 
 First, run the development server:

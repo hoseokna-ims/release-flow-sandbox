@@ -49,7 +49,7 @@ echo "✅ ${BRANCH} 준비 완료."
 if [ -n "${LATEST}" ]; then
   CARRY=""
   while IFS=$'\x1f' read -r hash subject; do
-    br="$(printf '%s' "${subject}" | grep -oE '(feature|hotfix|fix)/[A-Za-z0-9._/-]+' | head -1)"
+    br="$(printf '%s' "${subject}" | grep -oE '(feature|hotfix|fix)/[A-Za-z0-9._/-]+' | head -1 || true)"
     [ -z "${br}" ] && continue
     p2="$(git rev-parse "${hash}^2" 2>/dev/null)" || continue
     git merge-base --is-ancestor "${p2}" origin/develop && continue  # 이미 develop 반영 → 제외
