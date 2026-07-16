@@ -19,7 +19,7 @@ start() {
 
   echo "▶ [사전검사] fetch + 최신/클린 확인"
   git fetch origin --prune
-  [ -z "$(git status --porcelain)" ] || { echo "❌ 워킹트리 클린 아님"; exit 1; }
+  [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 워킹트리 클린 아님"; exit 1; }
   for BR in develop master; do
     read -r behind _ < <(git rev-list --left-right --count "origin/${BR}...${BR}" 2>/dev/null || echo "0 0")
     [ "${behind}" -gt 0 ] && { echo "❌ ${BR} 가 origin 보다 ${behind} 커밋 뒤처짐 → git pull 후 재시도"; exit 1; }
@@ -50,13 +50,16 @@ finish() {
     *) echo "❌ release/* 브랜치에서 실행하세요 (현재: ${BRANCH})"; exit 1 ;;
   esac
   local VERSION="${BRANCH#release/}"
-  [ -z "$(git status --porcelain)" ] || { echo "❌ 작업을 먼저 커밋하세요"; exit 1; }
+  [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 작업을 먼저 커밋하세요"; exit 1; }
 
   trap 'echo "❌ release finish 중단. git status 확인 후 수동 마무리하세요."' ERR
   echo "▶ bump + changelog (${VERSION})"
   node scripts/bump-version.mjs "${VERSION}" >/dev/null
-  bash scripts/changelog.sh "${VERSION}"
-  git add -A && git commit -qm "chore: release ${VERSION}"
+  node scripts/changelog.mjs "${VERSION}"
+  git add package.json
+  [ -f package-lock.json ] && git add package-lock.json || true
+  [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
+  git commit -qm "chore: release ${VERSION}"
 
   echo "▶ git flow release finish (master·develop 머지 + 태그 ${VERSION})"
   GIT_MERGE_AUTOEDIT=no git flow release finish -m "${VERSION}" "${VERSION}"

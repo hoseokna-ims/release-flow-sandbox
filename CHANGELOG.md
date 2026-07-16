@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.0] - 2026-07-16
+
+### feature/FE-1009
+- feat: CHANGELOG 을 소스 브랜치별로 그룹핑 (changelog.sh → changelog.mjs) ([7782236](https://github.com/hoseokna-ims/release-flow-sandbox/commit/7782236bffc639a3487de8efde39c4ffdfc815db))
+
+### feature/FE-1008
+- refactor: clean-check는 tracked 수정만 + 명시적 staging ([8c2112b](https://github.com/hoseokna-ims/release-flow-sandbox/commit/8c2112b8a0dbf563229716a98eca01e7a913e328))
+
 ## [0.9.0] - 2026-07-15
 
 ### Added
