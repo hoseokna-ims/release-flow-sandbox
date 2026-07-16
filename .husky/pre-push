@@ -1,31 +1,18 @@
 #!/usr/bin/env sh
+
+# 로컬 pre-push 가드 (정책 §5) — husky 가 실행한다(core.hooksPath=.husky/_).
 #
-# 로컬 pre-push 가드 (정책 §5): master 에 스테이징 버전(patch!=0) push 를 차단한다.
-# 운영선(master)에는 patch==0 만 허용 — CI(prod.yaml) 가드의 로컬 선제 방어선.
-# core.hooksPath=.husky 로 등록되어 순수 git 만으로 동작한다(scripts/setup-versioning.sh).
-#
-# stdin 각 줄: <local ref> <local sha> <remote ref> <remote sha>
+# ※ imsform-mobile-web 에는 이 저장소가 검증한 이 블록을, 기존 .husky/pre-push 의
+#    tsc/test 검사 "뒤에 append" 한다. (샌드박스는 tsc/test 검사가 없어 가드만 둔다.)
 
-zero='0000000000000000000000000000000000000000'
-
-while read -r _local_ref local_sha remote_ref _remote_sha; do
-  # master 브랜치로 향하는 push 만 검사
-  [ "$remote_ref" = "refs/heads/master" ] || continue
-  # 브랜치 삭제(local_sha = 0...0)는 통과
-  [ "$local_sha" = "$zero" ] && continue
-
-  version=$(git show "$local_sha:package.json" 2>/dev/null \
-    | grep -m1 '"version"' \
-    | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-
-  # 버전을 못 읽으면(파일 부재 등) 차단하지 않음(오탐 방지)
-  [ -n "$version" ] || continue
-
-  patch="${version##*.}"
-  if [ "$patch" != "0" ]; then
-    echo "❌ pre-push 차단: master 에 스테이징 버전(${version}, patch!=0) push 시도." >&2
-    echo "   운영선(master)에는 patch==0 버전만 허용됩니다 (release/hotfix finish 사용)." >&2
-    exit 1
+# 운영(master) 푸시 시 스테이징 버전(patch!=0) 차단
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/master" ]; then
+    VERSION=$(node -p "require('./package.json').version")
+    if [ "${VERSION##*.}" != "0" ]; then
+      echo "❌ 운영(master)에 스테이징 버전 $VERSION 은 푸시할 수 없습니다. (patch는 0이어야 함)"
+      exit 1
+    fi
   fi
 done
 
