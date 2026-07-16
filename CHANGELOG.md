@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.11.0] - 2026-07-16
+
+### feature/FE-1013
+- docs: 스크립트 안내 문구를 yarn 명령 표기로 통일 ([b294845](https://github.com/hoseokna-ims/release-flow-sandbox/commit/b294845e45038425ac955ceee105d04055dd0ffc))
+
 ## [0.10.0] - 2026-07-16
 
 ### feature/FE-1009
