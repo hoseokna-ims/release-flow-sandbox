@@ -1,4 +1,6 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Release Flow Sandbox
+
+브랜치 전략·버전 자동화·배포 가드까지 릴리스 전 과정을 실제 서비스 영향 없이 연습하기 위한 샌드박스 프로젝트입니다. [Next.js](https://nextjs.org) 기반으로 구성되어 있습니다.
 
 ## Getting Started
 

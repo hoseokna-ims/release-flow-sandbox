@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { APP_VERSION } from "./version-info";
+import { APP_VERSION, APP_REPO_URL, getReleaseStatus } from "./version-info";
 
 export default function Home() {
   return (
@@ -15,11 +15,11 @@ export default function Home() {
         />
         <span className="inline-flex items-center gap-1.5 rounded-full border border-black/[.08] bg-black/[.03] px-3 py-1 text-sm font-medium text-zinc-600 dark:border-white/[.145] dark:bg-white/[.06] dark:text-zinc-400">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          현재 버전 v{APP_VERSION}
+          현재 버전 v{APP_VERSION} · {getReleaseStatus()}
         </span>
         <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
           <h1 className="max-w-md text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            릴리스 플로우 샌드박스
+            릴리스 플로우 샌드박스에 오신 것을 환영합니다
           </h1>
           <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
             브랜치 전략과 버전 자동화, 배포 가드까지 릴리스 전 과정을 안전하게
@@ -40,7 +40,7 @@ export default function Home() {
               width={16}
               height={16}
             />
-            릴리스 워크플로 보기
+            릴리스 파이프라인 열기
           </a>
           <a
             className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[180px]"
@@ -48,14 +48,33 @@ export default function Home() {
             target="_blank"
             rel="noopener noreferrer"
           >
-            변경 이력
+            릴리스 노트
           </a>
         </div>
         <footer className="mt-8 w-full border-t border-black/[.06] pt-6 text-sm text-zinc-500 dark:border-white/[.1] dark:text-zinc-500">
           <p>
-            이 환경은 실제 배포에 영향을 주지 않는 릴리스 연습용 샌드박스입니다.
+            이 환경은 실제 배포에 영향을 주지 않는 릴리스 연습용 샌드박스이며,
+            모든 변경은 안전하게 되돌릴 수 있습니다.
           </p>
           <p className="mt-1">© 2026 IMS Mobility · Release Flow Sandbox</p>
+          <p className="mt-3 flex gap-4">
+            <a
+              className="underline-offset-4 hover:text-foreground hover:underline"
+              href={APP_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              저장소
+            </a>
+            <a
+              className="underline-offset-4 hover:text-foreground hover:underline"
+              href={`${APP_REPO_URL}/issues`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              이슈 제보
+            </a>
+          </p>
         </footer>
       </main>
     </div>
