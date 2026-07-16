@@ -24,3 +24,7 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+a {
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
