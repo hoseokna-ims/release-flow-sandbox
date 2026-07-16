@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.18.0] - 2026-07-16
+
+### hotfix/0.18.0
+- chore: test ([842b340](https://github.com/hoseokna-ims/release-flow-sandbox/commit/842b34084f39e1425e2ef21513075870ca5647f1))
+
 ## [0.17.0] - 2026-07-16
 
 ### feature/FE-2000
