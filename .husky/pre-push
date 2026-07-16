@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+
+# 로컬 pre-push 가드 (정책 §5) — husky 가 실행한다(core.hooksPath=.husky/_).
+#
+# ※ imsform-mobile-web 에는 이 저장소가 검증한 이 블록을, 기존 .husky/pre-push 의
+#    tsc/test 검사 "뒤에 append" 한다. (샌드박스는 tsc/test 검사가 없어 가드만 둔다.)
+
+# 운영(master) 푸시 시 스테이징 버전(patch!=0) 차단
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/master" ]; then
+    VERSION=$(node -p "require('./package.json').version")
+    if [ "${VERSION##*.}" != "0" ]; then
+      echo "❌ 운영(master)에 스테이징 버전 $VERSION 은 푸시할 수 없습니다. (patch는 0이어야 함)"
+      exit 1
+    fi
+  fi
+done
+
+exit 0

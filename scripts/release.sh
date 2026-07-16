@@ -65,7 +65,14 @@ finish() {
   GIT_MERGE_AUTOEDIT=no git flow release finish -m "${VERSION}" "${VERSION}"
 
   echo "▶ push (master 푸시 = 운영 배포 트리거)"
-  git push origin master develop --tags
+  # --atomic: master/develop/태그 3개 ref 를 전부 성공 or 전부 실패로 push (부분 반영=스플릿 방지)
+  if ! git push --atomic origin master develop "${VERSION}"; then
+    echo "❌ push 실패(원자적으로 아무것도 반영되지 않음). 원격이 앞서 있을 수 있습니다." >&2
+    echo "   실제 원격 반영 상태:" >&2
+    git ls-remote origin master develop "refs/tags/${VERSION}" >&2 || true
+    echo "   → git fetch 후 최신 위에서 다시 finish 하거나, 필요 시 수동 마무리하세요." >&2
+    exit 1
+  fi
   echo "✅ 릴리스 ${VERSION} 완료 — 태그 ${VERSION}, master 배포 트리거됨."
 }
 
