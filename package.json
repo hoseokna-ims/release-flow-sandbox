@@ -1,6 +1,6 @@
 {
   "name": "release-flow-sandbox",
-  "version": "0.15.1",
+  "version": "0.17.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -11,7 +11,8 @@
     "hotfix": "bash scripts/hotfix.sh",
     "staging:new": "bash scripts/new-staging.sh",
     "staging:merge": "bash scripts/merge-staging.sh",
-    "staging:deploy": "bash scripts/deploy-staging.sh"
+    "staging:deploy": "bash scripts/deploy-staging.sh",
+    "postinstall": "husky && bash scripts/setup-versioning.sh || true"
   },
   "dependencies": {
     "next": "16.2.10",
@@ -25,6 +26,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "husky": "9.0.2",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
