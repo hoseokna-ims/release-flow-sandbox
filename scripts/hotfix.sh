@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # 운영 핫픽스 (2단계: 시작 → 수정·커밋 → 마무리).
-#   ./hotfix.sh start [minor|major]   master 기준 hotfix 브랜치 생성 (기본 minor)
+#   yarn hotfix start [minor|major]   master 기준 hotfix 브랜치 생성 (기본 minor)
 #   (여기서 수정하고 커밋)
-#   ./hotfix.sh finish                bump + changelog + finish(머지·태그) + push
+#   yarn hotfix finish                bump + changelog + finish(머지·태그) + push
 #
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -12,7 +12,7 @@ start() {
   local TYPE="${1:-minor}"
   case "${TYPE}" in
     minor|major) ;;
-    *) echo "사용법: ./hotfix.sh start [minor|major]"; exit 1 ;;
+    *) echo "사용법: yarn hotfix start [minor|major]"; exit 1 ;;
   esac
   git fetch origin --prune
   [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 워킹트리 클린 아님"; exit 1; }
@@ -23,7 +23,7 @@ start() {
   git rev-parse "${NEXT}" >/dev/null 2>&1 && { echo "❌ 태그 ${NEXT} 이미 존재"; exit 1; }
 
   git flow hotfix start "${NEXT}"
-  echo "✅ hotfix/${NEXT} 시작. 수정·커밋 후 → ./hotfix.sh finish"
+  echo "✅ hotfix/${NEXT} 시작. 수정·커밋 후 → yarn hotfix finish"
 }
 
 finish() {
@@ -56,5 +56,5 @@ CMD="${1:-}"
 case "${CMD}" in
   start) shift; start "${@:-}" ;;
   finish) finish ;;
-  *) echo "사용법: ./hotfix.sh start [minor|major]  |  ./hotfix.sh finish"; exit 1 ;;
+  *) echo "사용법: yarn hotfix start [minor|major]  |  yarn hotfix finish"; exit 1 ;;
 esac

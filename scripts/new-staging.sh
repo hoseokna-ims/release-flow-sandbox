@@ -5,7 +5,7 @@
 # - origin/develop 기준으로 staging/YYMMDD 생성, 운영형 버전이면 patch bump.
 # - 생성 후, 이전 staging 에는 있었지만 아직 develop 에 없는(=미릴리스) 브랜치 목록을 안내한다.
 #
-# 사용법: ./new-staging.sh [YYMMDD]
+# 사용법: yarn staging:new [YYMMDD]
 #
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
