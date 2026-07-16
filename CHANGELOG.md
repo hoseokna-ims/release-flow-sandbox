@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0] - 2026-07-16
+
+### feature/FE-1019
+- docs: README 배포 명령어 안내 추가 (imsform FE-2714) ([d501da7](https://github.com/hoseokna-ims/release-flow-sandbox/commit/d501da7ce03c17d7587b31fe9e29d9117ec53d52))
+- chore: setup-versioning 에 git-flow init 자동화(가드) 추가 (imsform FE-2714) ([d4be70f](https://github.com/hoseokna-ims/release-flow-sandbox/commit/d4be70f9cf9f8c22316bc4bef34014fbb58dabd5))
+- fix: 배포 스크립트 Gemini 리뷰 지적 4건 역-반영 (imsform FE-2714) ([1134828](https://github.com/hoseokna-ims/release-flow-sandbox/commit/1134828e2cce5dcb76b3e5f57f14a9e9700a1678))
+
 ## [0.18.0] - 2026-07-16
 
 ### hotfix/0.18.0

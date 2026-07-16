@@ -28,6 +28,8 @@ let tagVersions = [];
 try {
   tagVersions = execSync('git tag --list', { encoding: 'utf8' })
     .split('\n')
+    .map((t) => t.trim())
+    .filter((t) => /^v?\d+\.\d+\.\d+$/.test(t))
     .map(parseSemver)
     .filter(Boolean);
 } catch {
