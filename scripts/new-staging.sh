@@ -2,7 +2,8 @@
 #
 # 스테이징 통합 브랜치 생성 (사이클당 1회).
 # - 최신 staging 이 이미 현재 develop 을 반영했으면 생성을 막는다(중복 방지).
-# - origin/develop 기준으로 staging/YYMMDD 생성, 운영형 버전이면 patch bump.
+# - origin/develop 기준으로 staging/YYMMDD 생성 (초기 bump 없음 — develop 버전 그대로).
+#   첫 배포(staging:merge/deploy)에서 patch +1 되어 .1 이 된다.
 # - 생성 후, 이전 staging 에는 있었지만 아직 develop 에 없는(=미릴리스) 브랜치 목록을 안내한다.
 #
 # 사용법: yarn staging:new [YYMMDD]
@@ -39,17 +40,7 @@ echo "▶ 스테이징 브랜치 생성: ${BRANCH} (origin/develop 기준)"
 git switch -c "${BRANCH}" origin/develop
 
 VERSION="$(node -p "require('./package.json').version")"
-if [ "${VERSION##*.}" = "0" ]; then
-  node scripts/bump-version.mjs patch >/dev/null
-  NEW="$(node -p "require('./package.json').version")"
-  git add package.json
-  [ -f package-lock.json ] && git add package-lock.json || true
-  [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
-  git commit -qm "chore: init staging ${BRANCH} -> ${NEW}"
-  echo "  스테이징 버전 초기화: ${VERSION} -> ${NEW}"
-else
-  echo "  이미 스테이징 버전(${VERSION}) 유지"
-fi
+echo "  현재 버전(${VERSION}) 유지 — 초기 bump 없음 (첫 staging:merge/deploy 에서 patch +1)"
 
 git push -u origin "${BRANCH}"
 echo "✅ ${BRANCH} 준비 완료."
