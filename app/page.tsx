@@ -40,7 +40,7 @@ export default function Home() {
               width={16}
               height={16}
             />
-            릴리스 워크플로 보기
+            릴리스 파이프라인 열기
           </a>
           <a
             className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[180px]"
@@ -48,7 +48,7 @@ export default function Home() {
             target="_blank"
             rel="noopener noreferrer"
           >
-            변경 이력
+            릴리스 노트
           </a>
         </div>
         <footer className="mt-8 w-full border-t border-black/[.06] pt-6 text-sm text-zinc-500 dark:border-white/[.1] dark:text-zinc-500">
