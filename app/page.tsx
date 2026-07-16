@@ -13,6 +13,7 @@ export default function Home() {
           height={20}
           priority
         />
+        <p>테스트입니다.</p>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-black/[.08] bg-black/[.03] px-3 py-1 text-sm font-medium text-zinc-600 dark:border-white/[.145] dark:bg-white/[.06] dark:text-zinc-400">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
           현재 버전 v{APP_VERSION} · {getReleaseStatus()}
