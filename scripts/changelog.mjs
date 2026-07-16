@@ -92,8 +92,8 @@ if (existsSync(FILE)) {
   const current = readFileSync(FILE, 'utf8');
   if (/^#\s/.test(current)) {
     const nl = current.indexOf('\n');
-    const header = current.slice(0, nl);
-    const rest = current.slice(nl + 1).replace(/^\n+/, '');
+    const header = nl !== -1 ? current.slice(0, nl) : current;
+    const rest = nl !== -1 ? current.slice(nl + 1).replace(/^\n+/, '') : '';
     content = `${header}\n\n${section}${rest}`;
   } else {
     content = `# Changelog\n\n${section}${current}`;
