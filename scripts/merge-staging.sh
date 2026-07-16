@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # 현재 작업 브랜치를 최신 staging 브랜치에 머지하고 스테이징 배포까지 한 번에.
-#   (작업 브랜치에서) ./merge-staging.sh
+#   (작업 브랜치에서) yarn staging:merge
 #     → 최신 staging checkout → 작업 브랜치 --no-ff 머지 → patch +1 → push → staging 배포
-#   머지 충돌 시: 중단하고 안내(해결·커밋 후 ./deploy-staging.sh 로 마무리).
+#   머지 충돌 시: 중단하고 안내(해결·커밋 후 yarn staging:deploy 로 마무리).
 #
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"

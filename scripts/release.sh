@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # 운영 릴리스 (2단계: 시작 → (선택)안정화 작업 → 마무리).
-#   ./release.sh start [minor|major]   develop 기준 release 브랜치 생성 (기본 minor)
+#   yarn release start [minor|major]   develop 기준 release 브랜치 생성 (기본 minor)
 #   (여기서 막판 안정화 작업·커밋 — 선택)
-#   ./release.sh finish                bump + changelog + finish(머지·태그) + push
+#   yarn release finish                bump + changelog + finish(머지·태그) + push
 #
 # 원샷 실행은 지원하지 않는다(실수 방지). 반드시 start → finish.
 #
@@ -14,7 +14,7 @@ start() {
   local TYPE="${1:-minor}"
   case "${TYPE}" in
     minor|major) ;;
-    *) echo "사용법: ./release.sh start [minor|major]"; exit 1 ;;
+    *) echo "사용법: yarn release start [minor|major]"; exit 1 ;;
   esac
 
   echo "▶ [사전검사] fetch + 최신/클린 확인"
@@ -40,7 +40,7 @@ start() {
   rm -f "${MT}"
 
   git flow release start "${NEXT}"
-  echo "✅ release/${NEXT} 시작. (선택) 안정화 작업·커밋 후 → ./release.sh finish"
+  echo "✅ release/${NEXT} 시작. (선택) 안정화 작업·커밋 후 → yarn release finish"
 }
 
 finish() {
@@ -73,5 +73,5 @@ CMD="${1:-}"
 case "${CMD}" in
   start) shift; start "${@:-}" ;;
   finish) finish ;;
-  *) echo "사용법: ./release.sh start [minor|major]  |  ./release.sh finish"; exit 1 ;;
+  *) echo "사용법: yarn release start [minor|major]  |  yarn release finish"; exit 1 ;;
 esac
