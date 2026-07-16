@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.0] - 2026-07-16
+
+### hotfix/0.13.0
+- chore: 문구 제거 ([8e08632](https://github.com/hoseokna-ims/release-flow-sandbox/commit/8e08632c29e0c0262d1f7316511f69ea0e02359c))
+
 ## [0.12.0] - 2026-07-16
 
 ### hotfix/0.12.0
