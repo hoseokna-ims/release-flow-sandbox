@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { APP_VERSION } from "./version-info";
+import { APP_VERSION, APP_REPO_URL } from "./version-info";
 
 export default function Home() {
   return (
@@ -56,6 +56,24 @@ export default function Home() {
             이 환경은 실제 배포에 영향을 주지 않는 릴리스 연습용 샌드박스입니다.
           </p>
           <p className="mt-1">© 2026 IMS Mobility · Release Flow Sandbox</p>
+          <p className="mt-3 flex gap-4">
+            <a
+              className="underline-offset-4 hover:text-foreground hover:underline"
+              href={APP_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              저장소
+            </a>
+            <a
+              className="underline-offset-4 hover:text-foreground hover:underline"
+              href={`${APP_REPO_URL}/issues`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              이슈 제보
+            </a>
+          </p>
         </footer>
       </main>
     </div>
