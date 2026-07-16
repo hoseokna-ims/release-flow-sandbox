@@ -3,7 +3,7 @@
 # 스테이징 배포: patch +1 (운영형 버전 퇴행 복구 자동 포함) → 커밋 → push → staging 태그 트리거.
 # 반드시 staging/* 브랜치에서, feature 머지·커밋이 끝난 상태에서 실행한다.
 #
-# 사용법: ./deploy-staging.sh
+# 사용법: yarn staging:deploy
 #
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -29,7 +29,7 @@ git commit -qm "chore: staging deploy ${AFTER}"
 echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
 
 if ! git push origin "HEAD:${BRANCH}"; then
-  echo "⚠️ push 거부됨(원격이 앞섬). 'git pull --no-rebase' 후 다시 ./deploy-staging.sh 실행하세요."
+  echo "⚠️ push 거부됨(원격이 앞섬). 'git pull --no-rebase' 후 다시 yarn staging:deploy 실행하세요."
   exit 1
 fi
 

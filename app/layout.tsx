@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Release Flow Sandbox",
-  description: "버전/릴리스 자동화 흐름을 검증하는 데모 페이지",
+  title: "릴리스 플로우 샌드박스",
+  description:
+    "브랜치 전략·버전 자동화·배포 가드까지 릴리스 전 과정을 안전하게 연습하는 공간",
 };
 
 export default function RootLayout({

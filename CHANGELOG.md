@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.14.0] - 2026-07-16
+
+### hotfix/0.14.0
+- chore: yarn.lock으로 변경 ([e322491](https://github.com/hoseokna-ims/release-flow-sandbox/commit/e322491e1ea5a118a017d77b352e6ae09bdb5d74))
+
+## [0.13.0] - 2026-07-16
+
+### hotfix/0.13.0
+- chore: 문구 제거 ([8e08632](https://github.com/hoseokna-ims/release-flow-sandbox/commit/8e08632c29e0c0262d1f7316511f69ea0e02359c))
+
+## [0.12.0] - 2026-07-16
+
+### hotfix/0.12.0
+- chore: 테스트용 커밋 ([1ba2e95](https://github.com/hoseokna-ims/release-flow-sandbox/commit/1ba2e95d262e931b2597ca89192b5854a612b4f8))
+- feat: staging:merge 다중 인자화 + staging:new 초기 bump 제거 ([a6a4b0b](https://github.com/hoseokna-ims/release-flow-sandbox/commit/a6a4b0bd1c8e6b459b04891f98534f2632aa6cc8))
+
+## [0.11.0] - 2026-07-16
+
+### feature/FE-1013
+- docs: 스크립트 안내 문구를 yarn 명령 표기로 통일 ([b294845](https://github.com/hoseokna-ims/release-flow-sandbox/commit/b294845e45038425ac955ceee105d04055dd0ffc))
+
 ## [0.10.0] - 2026-07-16
 
 ### feature/FE-1009

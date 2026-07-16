@@ -7,3 +7,5 @@ export const APP_VERSION = '0.8.0';
 
 /** FE-1011: 저장소 링크 (푸터/CTA 에서 재사용) */
 export const APP_REPO_URL = 'https://github.com/hoseokna-ims/release-flow-sandbox';
+/** FE-1010: 현재 배포 채널 (stable | canary | staging) */
+export const RELEASE_CHANNEL = 'stable';
