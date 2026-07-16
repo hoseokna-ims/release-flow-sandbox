@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.0] - 2026-07-16
+
+### hotfix/0.12.0
+- chore: 테스트용 커밋 ([1ba2e95](https://github.com/hoseokna-ims/release-flow-sandbox/commit/1ba2e95d262e931b2597ca89192b5854a612b4f8))
+- feat: staging:merge 다중 인자화 + staging:new 초기 bump 제거 ([a6a4b0b](https://github.com/hoseokna-ims/release-flow-sandbox/commit/a6a4b0bd1c8e6b459b04891f98534f2632aa6cc8))
+
 ## [0.11.0] - 2026-07-16
 
 ### feature/FE-1013
