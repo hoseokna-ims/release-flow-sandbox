@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { APP_VERSION, getReleaseStatus } from "./version-info";
+import { APP_VERSION, APP_REPO_URL, getReleaseStatus } from "./version-info";
 
 export default function Home() {
   return (
@@ -19,7 +19,7 @@ export default function Home() {
         </span>
         <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
           <h1 className="max-w-md text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            릴리스 플로우 샌드박스
+            릴리스 플로우 샌드박스에 오신 것을 환영합니다
           </h1>
           <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
             브랜치 전략과 버전 자동화, 배포 가드까지 릴리스 전 과정을 안전하게
@@ -57,6 +57,24 @@ export default function Home() {
             모든 변경은 안전하게 되돌릴 수 있습니다.
           </p>
           <p className="mt-1">© 2026 IMS Mobility · Release Flow Sandbox</p>
+          <p className="mt-3 flex gap-4">
+            <a
+              className="underline-offset-4 hover:text-foreground hover:underline"
+              href={APP_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              저장소
+            </a>
+            <a
+              className="underline-offset-4 hover:text-foreground hover:underline"
+              href={`${APP_REPO_URL}/issues`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              이슈 제보
+            </a>
+          </p>
         </footer>
       </main>
     </div>

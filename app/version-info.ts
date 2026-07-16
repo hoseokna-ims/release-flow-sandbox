@@ -10,3 +10,7 @@ export function getReleaseStatus(version: string = APP_VERSION): string {
   const patch = Number(version.split('.')[2] ?? 0);
   return patch === 0 ? '정식 릴리스' : '핫픽스';
 }
+export const APP_VERSION = '0.8.0';
+
+/** FE-1011: 저장소 링크 (푸터/CTA 에서 재사용) */
+export const APP_REPO_URL = 'https://github.com/hoseokna-ims/release-flow-sandbox';
