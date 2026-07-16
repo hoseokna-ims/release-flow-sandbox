@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.15.0] - 2026-07-16
+
+### feature/FE-1015
+- docs: 기여 가이드(CONTRIBUTING.md) 추가 ([341d762](https://github.com/hoseokna-ims/release-flow-sandbox/commit/341d762e267d9fb78d6479f2a1ccae5fb1494396))
+- feat: 사이트 공통 설정 상수 모듈 추가 ([ae455ce](https://github.com/hoseokna-ims/release-flow-sandbox/commit/ae455cecb2e5fcb71b0ca63daeaeb9222e58188e))
+
+### feature/FE-1012
+- style: 푸터 안내 문구 보강 ([28d5814](https://github.com/hoseokna-ims/release-flow-sandbox/commit/28d58149fd4ba880a187485ebd0f3d6a655c742e))
+- style: CTA 버튼 문구 다듬기 ([436289b](https://github.com/hoseokna-ims/release-flow-sandbox/commit/436289b9dbf47523c1a6b6f119b41d2c57a43cb6))
+- feat: 버전 배지에 릴리스 상태 라벨 표시 ([d17a8ca](https://github.com/hoseokna-ims/release-flow-sandbox/commit/d17a8cac74cfcc5233dbfc53fa685c9afc544c59))
+- feat: 릴리스 상태 판별 helper 추가 및 버전 동기화 ([9ae1ed9](https://github.com/hoseokna-ims/release-flow-sandbox/commit/9ae1ed90ca7c2d64126989321458d7db92c60fdf))
+
+### feature/FE-1011
+- style: 링크 색상 전환 효과 추가 ([3c564bd](https://github.com/hoseokna-ims/release-flow-sandbox/commit/3c564bd2944dbd9cea2f2bb9d51ed0e385d580ef))
+- docs: README 상단에 프로젝트 소개 추가 ([e62ff6b](https://github.com/hoseokna-ims/release-flow-sandbox/commit/e62ff6b7fde47f8456609657411249ae983664c4))
+- feat: 푸터에 저장소·이슈 링크 추가 ([21fd50e](https://github.com/hoseokna-ims/release-flow-sandbox/commit/21fd50e3aa262fade307497cba0ce1b494d76052))
+- feat: 저장소 URL 상수 추가 ([1426fab](https://github.com/hoseokna-ims/release-flow-sandbox/commit/1426fab8a5e4a06b2d55821ea981916ce4e252b2))
+
+### feature/FE-1010
+- docs: 앱 메타데이터 문구 한글화 및 보강 ([701299e](https://github.com/hoseokna-ims/release-flow-sandbox/commit/701299e17815a2f761f35b9a005c4a06b9808d4a))
+- style: 전역 accent 색상 토큰 추가 ([a076f94](https://github.com/hoseokna-ims/release-flow-sandbox/commit/a076f9427a05d106730ba9d609535cd1fcd88409))
+- feat: 메인 헤드라인 문구 개선 및 배지에 배포 채널 표시 ([96a23d3](https://github.com/hoseokna-ims/release-flow-sandbox/commit/96a23d3e65c3fa248a776098b5db42fdf430597d))
+- feat: 릴리스 배포 채널 상수 추가 ([b5446ad](https://github.com/hoseokna-ims/release-flow-sandbox/commit/b5446ad6cf2bc0105e4b968e33021df939af73c2))
+
 ## [0.14.0] - 2026-07-16
 
 ### hotfix/0.14.0
