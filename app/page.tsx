@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { APP_VERSION } from "./version-info";
+import { APP_VERSION, RELEASE_CHANNEL } from "./version-info";
 
 export default function Home() {
   return (
@@ -15,11 +15,11 @@ export default function Home() {
         />
         <span className="inline-flex items-center gap-1.5 rounded-full border border-black/[.08] bg-black/[.03] px-3 py-1 text-sm font-medium text-zinc-600 dark:border-white/[.145] dark:bg-white/[.06] dark:text-zinc-400">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          현재 버전 v{APP_VERSION}
+          현재 버전 v{APP_VERSION} · {RELEASE_CHANNEL} 채널
         </span>
         <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
           <h1 className="max-w-md text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            릴리스 플로우 샌드박스
+            릴리스 플로우 샌드박스에 오신 것을 환영합니다
           </h1>
           <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
             브랜치 전략과 버전 자동화, 배포 가드까지 릴리스 전 과정을 안전하게
