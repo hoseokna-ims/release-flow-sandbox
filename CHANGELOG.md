@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.20.0] - 2026-07-20
+
+### feature/FE-1020
+- feat: staging 브랜치를 날짜(YYMMDD) → 버전 라인(staging/<major>.<minor>)으로 전환 ([65a3501](https://github.com/hoseokna-ims/release-flow-sandbox/commit/65a3501cefd6dcfdd8b24b2f6dd07de96f851b8d))
+
 ## [0.19.0] - 2026-07-16
 
 ### feature/FE-1019
