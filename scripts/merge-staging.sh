@@ -20,8 +20,11 @@ BRANCHES=("$@")
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 워킹트리 클린 아님 (작업을 먼저 커밋하세요)"; exit 1; }
 
 git fetch origin --prune
-LATEST="$(git branch -r --list 'origin/staging/*' | sed 's#.*origin/##' | sort | tail -1 || true)"
+# 최신 staging 라인 (버전 숫자정렬: 0.9 < 0.10 정확히. 레거시 날짜 브랜치는 제외)
+LATEST="$(git branch -r --list 'origin/staging/*' | sed 's#.*origin/staging/##' \
+  | grep -E '^[0-9]+\.[0-9]+$' | sort -t. -k1,1n -k2,2n | tail -1 || true)"
 [ -n "${LATEST}" ] || { echo "❌ staging 브랜치가 없습니다 → 먼저 yarn staging:new"; exit 1; }
+LATEST="staging/${LATEST}"
 
 echo "▶ 최신 staging: ${LATEST}"
 git switch "${LATEST}"
