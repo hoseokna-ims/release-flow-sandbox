@@ -36,7 +36,19 @@ git fetch origin --prune
 LATEST="$(git branch -r --list 'origin/staging/*' | sed 's#.*origin/staging/##' \
   | grep -E '^[0-9]+\.[0-9]+$' | sort -t. -k1,1n -k2,2n | tail -1 || true)"
 [ -n "${LATEST}" ] || { echo "❌ staging 브랜치가 없습니다 → 먼저 yarn staging:new"; exit 1; }
+LATEST_LINE="${LATEST}"
 LATEST="staging/${LATEST}"
+
+# 라인 불일치 가드: develop 이 최신 staging 보다 앞선 릴리스 라인이면 옛 staging 에 섞이는 것 차단.
+# (staging:new 의 "중복 생성 차단" 가드와 대칭 — 라인 올라가면 새 staging 을 강제)
+DEV_MINOR="$(git show origin/develop:package.json | grep -m1 '"version"' \
+  | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+DEV_MINOR="${DEV_MINOR%.*}"
+if [ "${DEV_MINOR}" != "${LATEST_LINE}" ]; then
+  echo "❌ develop 은 ${DEV_MINOR} 라인인데 최신 staging 은 ${LATEST}(${LATEST_LINE} 라인)입니다."
+  echo "   릴리스로 라인이 올라갔습니다 → 먼저 'yarn staging:new'(staging/${DEV_MINOR} 생성) 후 다시 실행하세요."
+  exit 1
+fi
 
 echo "▶ 최신 staging: ${LATEST}"
 git switch "${LATEST}"
