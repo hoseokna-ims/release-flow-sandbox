@@ -21,6 +21,8 @@ yarn staging:new
 // 2) 작업 브랜치 반영 + 배포 (주력) — 브랜치명을 인자로, 여러 개 한 번에 가능
 //    최신 staging 에 --no-ff 머지 → patch +1 → push → 배포 트리거
 yarn staging:merge feature/FE-XXXX [feature/FE-YYYY ...]
+//    인자 없이 실행하면 현재 브랜치를 머지 (feature/fix/hotfix 작업 브랜치에서만)
+yarn staging:merge
 
 // 3) 폴백 — 머지 충돌을 직접 해결·커밋했거나 수동 머지 후 마무리 배포할 때
 yarn staging:deploy

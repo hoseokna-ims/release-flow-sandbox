@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.21.0] - 2026-07-20
+
+### feature/FE-1021
+- feat: staging:merge 무인자 시 현재 브랜치 머지 (work 브랜치 한정) ([d0781c6](https://github.com/hoseokna-ims/release-flow-sandbox/commit/d0781c66e2e217b828cbf9707b06cc27d6aaf2db))
+
 ## [0.20.0] - 2026-07-20
 
 ### feature/FE-1020
