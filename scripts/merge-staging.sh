@@ -1,21 +1,33 @@
 #!/usr/bin/env bash
 #
 # 지정한 작업 브랜치들을 최신 staging 브랜치에 머지하고 스테이징 배포까지 한 번에.
-#   yarn staging:merge <branch> [branch ...]
-#     → 최신 staging checkout/pull → 인자 브랜치들을 순서대로 --no-ff 머지
+#   yarn staging:merge <branch> [branch ...]   # 대상 명시 (위치 무관, 주력)
+#   yarn staging:merge                         # 인자 없으면 현재 브랜치 (feature/fix/hotfix 에서만)
+#     → 최신 staging checkout/pull → 대상 브랜치들을 순서대로 --no-ff 머지
 #       → (모두 성공 시) patch +1(딱 한 번) → commit → push → staging 배포
-#   현재 위치(브랜치)와 무관하게 동작한다 — 대상은 인자로만 지정한다.
 #   머지 충돌 시: 즉시 중단하고 안내(해결·커밋 후 yarn staging:deploy 로 마무리).
 #
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 if [ "$#" -eq 0 ]; then
-  echo "사용법: yarn staging:merge <branch> [branch ...]"
-  echo "  예) yarn staging:merge feature/FE-1010 feature/FE-1011"
-  exit 1
+  # 인자 없음 → 현재 브랜치를 대상으로 (실행 중 staging 으로 switch 하므로 work 브랜치에서만 허용)
+  CURRENT="$(git rev-parse --abbrev-ref HEAD)"
+  case "${CURRENT}" in
+    feature/*|fix/*|hotfix/*)
+      BRANCHES=("${CURRENT}")
+      echo "ℹ️  인자 없음 → 현재 브랜치 '${CURRENT}' 를 최신 staging 에 머지합니다."
+      ;;
+    *)
+      echo "사용법: yarn staging:merge <branch> [branch ...]"
+      echo "  예) yarn staging:merge feature/FE-1010 feature/FE-1011"
+      echo "  인자 없이 실행하려면 feature/fix/hotfix 작업 브랜치에서 실행하세요. (현재: ${CURRENT})"
+      exit 1
+      ;;
+  esac
+else
+  BRANCHES=("$@")
 fi
-BRANCHES=("$@")
 
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 워킹트리 클린 아님 (작업을 먼저 커밋하세요)"; exit 1; }
 
