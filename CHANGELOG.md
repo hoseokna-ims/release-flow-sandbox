@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.22.0] - 2026-07-20
+
+### feature/FE-1023
+- feat: staging:merge 에 라인 불일치 가드 추가 (옛 staging 오머지 방지) ([1d32371](https://github.com/hoseokna-ims/release-flow-sandbox/commit/1d32371634794a8ea31892b20203a336c36f428f))
+
 ## [0.21.0] - 2026-07-20
 
 ### feature/FE-1021
