@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.23.0] - 2026-07-21
+
+### feature/FE-1024
+- feat: staging:merge 에 push 안 된 로컬 커밋 가드 추가 (차단) ([088c012](https://github.com/hoseokna-ims/release-flow-sandbox/commit/088c012926755e3ba1dff719570e5b6a2b6b1c4d))
+
 ## [0.22.0] - 2026-07-20
 
 ### feature/FE-1023
