@@ -3,8 +3,9 @@
 # 지정한 작업 브랜치들을 최신 staging 브랜치에 머지하고 스테이징 배포까지 한 번에.
 #   yarn staging:merge <branch> [branch ...]   # 대상 명시 (위치 무관, 주력)
 #   yarn staging:merge                         # 인자 없으면 현재 브랜치 (feature/fix/hotfix 에서만)
-#     → 최신 staging checkout/pull → 대상 브랜치들을 순서대로 --no-ff 머지
+#     → 최신 staging checkout/pull → 대상 브랜치들을 순서대로 --no-ff 머지 (origin/<branch> 기준)
 #       → (모두 성공 시) patch +1(딱 한 번) → commit → push → staging 배포
+#   대상은 origin 기준으로 머지한다 → 로컬에 push 안 된 커밋이 있으면 차단(먼저 push 하도록).
 #   머지 충돌 시: 즉시 중단하고 안내(해결·커밋 후 yarn staging:deploy 로 마무리).
 #
 set -euo pipefail
@@ -49,6 +50,24 @@ if [ "${DEV_MINOR}" != "${LATEST_LINE}" ]; then
   echo "   릴리스로 라인이 올라갔습니다 → 먼저 'yarn staging:new'(staging/${DEV_MINOR} 생성) 후 다시 실행하세요."
   exit 1
 fi
+
+# 사전검사(fail-fast, staging 으로 switch 하기 전): 대상 브랜치 존재 + push 안 된 로컬 커밋 차단.
+# staging 은 origin 기준으로 머지하므로, 로컬이 origin 보다 앞서면 그 커밋이 조용히 누락됨 → 막는다.
+for BR in "${BRANCHES[@]}"; do
+  if git rev-parse --verify --quiet "refs/remotes/origin/${BR}" >/dev/null; then
+    if git rev-parse --verify --quiet "refs/heads/${BR}" >/dev/null; then
+      AHEAD="$(git rev-list --count "origin/${BR}..${BR}" 2>/dev/null || echo 0)"
+      if [ "${AHEAD}" -gt 0 ]; then
+        echo "❌ '${BR}' 로컬에 push 안 된 커밋 ${AHEAD}개 — staging 은 origin 기준으로 머지합니다."
+        echo "   'git push origin ${BR}' 후 다시 실행하세요."
+        exit 1
+      fi
+    fi
+  elif ! git rev-parse --verify --quiet "refs/heads/${BR}" >/dev/null; then
+    echo "❌ 브랜치를 찾을 수 없습니다: ${BR} (origin/${BR}·로컬 모두 없음)"
+    exit 1
+  fi
+done
 
 echo "▶ 최신 staging: ${LATEST}"
 git switch "${LATEST}"
