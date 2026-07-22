@@ -50,6 +50,7 @@ export default function Home() {
           >
             릴리스 노트
           </a>
+          <p>테스트</p>
         </div>
         <footer className="mt-8 w-full border-t border-black/[.06] pt-6 text-sm text-zinc-500 dark:border-white/[.1] dark:text-zinc-500">
           <p>
