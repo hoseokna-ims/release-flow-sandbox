@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.25.0] - 2026-07-24
+
+### feature/FE-1027
+- refactor: changelog 노이즈 제외 정밀화 + 누락 조기경보 추가 ([f91aaa4](https://github.com/hoseokna-ims/release-flow-sandbox/commit/f91aaa4e97009aa2ac881ad8de4e507f62132ca8))
+- feat: 스테이징 배포 시 STAGING_CHANGELOG.md 자동 생성 ([2a15005](https://github.com/hoseokna-ims/release-flow-sandbox/commit/2a15005697a1109f07e8afc1cb6796580acac93e))
+
+### feature/FE-1026
+- fix: changelog 에서 [브랜치] 접두사 커밋 누락 방지 ([74dcaa7](https://github.com/hoseokna-ims/release-flow-sandbox/commit/74dcaa7eb0b0f2c46cc7edd78c14ee4278069f7c))
+
 ## [0.24.0] - 2026-07-24
 
 ### feature/FE-1025
