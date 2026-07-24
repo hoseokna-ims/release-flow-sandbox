@@ -75,6 +75,13 @@ finish() {
     exit 1
   fi
   echo "✅ 릴리스 ${VERSION} 완료 — 태그 ${VERSION}, master 배포 트리거됨."
+
+  # 릴리스는 이미 끝났다(ERR trap 해제) → staging 리프레시는 best-effort, 실패해도 릴리스 성공 유지.
+  trap - ERR
+  echo "▶ staging 라인 리프레시 (develop 기준 새 staging + carry-over 자동 머지·배포)"
+  if ! bash scripts/refresh-staging.sh; then
+    echo "⚠️ staging 리프레시 미완료 — 릴리스(${VERSION})는 정상 완료됨. 위 안내대로 수동 마무리하세요." >&2
+  fi
 }
 
 CMD="${1:-}"
