@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.24.0] - 2026-07-24
+
+### feature/FE-1025
+- feat: release/hotfix finish 시 staging 라인 자동 리프레시 추가 ([a14d4eb](https://github.com/hoseokna-ims/release-flow-sandbox/commit/a14d4ebc75b5b96c2131130ebcad789631ea512f))
+
 ## [0.23.0] - 2026-07-21
 
 ### feature/FE-1024
