@@ -45,6 +45,12 @@ yarn hotfix start [minor|major]
 yarn hotfix finish
 ```
 
+> **finish 후 staging 자동 리프레시**: `release finish`·`hotfix finish` 는 운영 push 성공 뒤
+> 새 라인 `staging/<major>.<minor>` 를 develop 기준으로 만들고, **carry-over**(이전 staging 엔
+> 머지됐지만 아직 develop 에 없는 작업 브랜치)를 자동 머지한 뒤 배포(patch +1)까지 진행합니다.
+> — 이 단계는 best-effort 라 실패해도 릴리스는 그대로 완료되며, carry-over 머지 충돌 시엔
+> origin 에 빈 라인만 만들고 `yarn staging:merge` 로 수동 마무리하도록 안내합니다.
+
 > 최초 클론 시 `yarn install`(postinstall)이 버전 병합 드라이버·ff 정책·git-flow init 을 자동 등록합니다.
 > git-flow 는 avh 에디션을 권장합니다: `brew install git-flow-avh`
 

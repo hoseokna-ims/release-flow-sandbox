@@ -54,15 +54,7 @@ echo "✅ ${BRANCH} 준비 완료."
 
 # carry-over 안내: 이전 staging 머지 중 아직 develop 에 없는 것(머지커밋 ^2 기준 → 브랜치 삭제 무관)
 if [ -n "${LATEST}" ]; then
-  CARRY=""
-  while IFS=$'\x1f' read -r hash subject; do
-    br="$(printf '%s' "${subject}" | grep -oE '(feature|hotfix|fix)/[A-Za-z0-9._/-]+' | head -1 || true)"
-    [ -z "${br}" ] && continue
-    p2="$(git rev-parse "${hash}^2" 2>/dev/null)" || continue
-    git merge-base --is-ancestor "${p2}" origin/develop && continue  # 이미 develop 반영 → 제외
-    CARRY="${CARRY}${br}"$'\n'
-  done < <(git log "origin/develop..origin/${LATEST}" --merges --pretty='%H%x1f%s')
-  CARRY="$(printf '%s' "${CARRY}" | sed '/^$/d' | sort -u)"
+  CARRY="$(bash scripts/carryover-branches.sh "${LATEST}")"
   if [ -n "${CARRY}" ]; then
     echo
     echo "ℹ️  이전 staging(${LATEST})에 있었지만 아직 develop 에 없는 브랜치 (필요 시 각 브랜치에서 yarn staging:merge):"
