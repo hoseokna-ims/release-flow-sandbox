@@ -22,9 +22,11 @@ fi
 BEFORE="$(node -p "require('./package.json').version")"
 node scripts/bump-version.mjs patch >/dev/null
 AFTER="$(node -p "require('./package.json').version")"
+node scripts/changelog.mjs "${AFTER}" --staging   # STAGING_CHANGELOG.md 재생성 (라인 스냅샷)
 git add package.json
 [ -f package-lock.json ] && git add package-lock.json || true
 [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
+[ -f STAGING_CHANGELOG.md ] && git add STAGING_CHANGELOG.md || true
 git commit -qm "chore: staging deploy ${AFTER}"
 echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
 

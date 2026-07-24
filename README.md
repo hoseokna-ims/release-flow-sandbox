@@ -28,6 +28,11 @@ yarn staging:merge
 yarn staging:deploy
 ```
 
+> **스테이징 changelog**: staging 배포(`staging:merge`/`staging:deploy`)마다 `STAGING_CHANGELOG.md`
+> 를 라인 스냅샷으로 **전체 재생성**합니다(브랜치별 그룹, 배포용 chore 커밋 제외). 이 파일은
+> **staging 브랜치 전용**이라 master/develop 에는 반영되지 않고 라인과 함께 폐기됩니다 — 현재
+> 라인에 뭐가 들어있는지 QA 가 보기 위한 용도입니다. 운영 이력은 `CHANGELOG.md` 가 담당합니다.
+
 ### 운영 배포 (release / hotfix)
 
 실수 배포 방지를 위해 **원샷 실행은 없으며** 반드시 `start` → `finish` 2단계로 진행합니다.
