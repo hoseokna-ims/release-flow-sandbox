@@ -68,16 +68,23 @@ for (const line of gitLines(`git log ${range} --merges --reverse --pretty=%H%x1f
 
 const currentBranch = runGit('git rev-parse --abbrev-ref HEAD');
 
-/** 범위 내 커밋(머지 제외, 최신순)을 conventional prefix 로 필터 후 브랜치별 그룹 */
-const CONVENTIONAL = /^(feat|fix|refactor|perf|style|chore|docs|test|build)(\(|:| )/i;
+/**
+ * 범위 내 커밋(머지 제외, 최신순)을 conventional prefix 로 필터 후 브랜치별 그룹.
+ * 선행 [태그] 접두사(예: "[feature/x] fix: ...")를 허용 — 일부 브랜치는 커밋 제목 앞에
+ * [브랜치명] 을 붙이는데, 이게 없으면 conventional 커밋이 통째로 누락된다(핫픽스 changelog 빈 섹션 사고).
+ */
+const TAG_PREFIX = /^\[[^\]]*\]\s*/;
+const CONVENTIONAL = /^(\[[^\]]*\]\s*)?(feat|fix|refactor|perf|style|chore|docs|test|build)(\(|:| )/i;
 const groups = new Map(); // 브랜치 → 라인 배열 (첫 등장 순서 유지)
 for (const line of gitLines(`git log ${range} --no-merges --pretty=%H%x1f%h%x1f%s`)) {
   const [full, short, subject] = line.split('\x1f');
   if (!CONVENTIONAL.test(subject || '')) continue;
   const branch = branchOfCommit.get(full) || currentBranch;
   const link = repoUrl ? `([${short}](${repoUrl}/commit/${full}))` : `(${short})`;
+  // 선행 [태그] 는 제거 — 브랜치별 헤딩(### feature/x)과 중복이라 본문에선 뺀다.
+  const cleaned = (subject || '').replace(TAG_PREFIX, '');
   if (!groups.has(branch)) groups.set(branch, []);
-  groups.get(branch).push(`- ${subject} ${link}`);
+  groups.get(branch).push(`- ${cleaned} ${link}`);
 }
 
 const today = new Date().toISOString().slice(0, 10);
