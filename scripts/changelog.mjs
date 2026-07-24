@@ -82,8 +82,12 @@ const currentBranch = runGit('git rev-parse --abbrev-ref HEAD');
  */
 const TAG_PREFIX = /^\[[^\]]*\]\s*/;
 const CONVENTIONAL = /^(\[[^\]]*\]\s*)?(feat|fix|refactor|perf|style|chore|docs|test|build)(\(|:| )/i;
-/** 배포용 자동 커밋(bump)은 변경 이력이 아니므로 제외 */
-const DEPLOY_NOISE = /^chore:\s*(staging deploy|release|hotfix)\b/i;
+/**
+ * 배포용 자동 bump 커밋만 제외 — "chore: <release|hotfix|staging deploy> <버전>" 형태(버전번호 동반 시에만).
+ * 버전번호를 요구해 기계 생성 bump 만 정확히 잡는다. 일반 chore 작업(예: "chore: eslint 규칙 추가",
+ * "chore: release notes 작성")은 changelog 에 그대로 포함된다.
+ */
+const DEPLOY_NOISE = /^chore:\s*(staging deploy|release|hotfix)\s+v?\d+\.\d+\.\d+\b/i;
 const groups = new Map(); // 브랜치 → 라인 배열 (첫 등장 순서 유지)
 for (const line of gitLines(`git log ${range} --no-merges --pretty=%H%x1f%h%x1f%s`)) {
   const [full, short, subject] = line.split('\x1f');
@@ -95,6 +99,19 @@ for (const line of gitLines(`git log ${range} --no-merges --pretty=%H%x1f%h%x1f%
   const link = repoUrl ? `([${short}](${repoUrl}/commit/${full}))` : `(${short})`;
   if (!groups.has(branch)) groups.set(branch, []);
   groups.get(branch).push(`- ${cleaned} ${link}`);
+}
+
+/**
+ * 안전망: 머지로 잡힌 브랜치인데 항목이 하나도 안 남으면 경고(조용한 누락 방지).
+ * allowlist 특성상 예상 못한 커밋 제목 형식은 통째로 사라질 수 있어, 0.40.0 류 사고를 조기 감지한다.
+ */
+const mergedBranches = new Set(branchOfCommit.values());
+const emptyBranches = [...mergedBranches].filter((branch) => !groups.has(branch));
+if (emptyBranches.length) {
+  process.stderr.write(
+    `⚠️  changelog: 머지됐지만 changelog 항목이 0개인 브랜치가 있습니다 ` +
+      `(커밋 제목이 conventional 형식인지 확인하세요): ${emptyBranches.join(', ')}\n`,
+  );
 }
 
 const today = new Date().toISOString().slice(0, 10);
