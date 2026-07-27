@@ -58,6 +58,6 @@ if [ -n "${LATEST}" ]; then
   if [ -n "${CARRY}" ]; then
     echo
     echo "ℹ️  이전 staging(${LATEST})에 있었지만 아직 develop 에 없는 브랜치 (필요 시 각 브랜치에서 yarn staging:merge):"
-    printf '%s\n' "${CARRY}" | sed 's/^/     - /'
+    printf '%s\n' "${CARRY}" | cut -f1 | sed 's/^/     - /'
   fi
 fi

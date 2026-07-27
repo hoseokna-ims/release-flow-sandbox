@@ -8,8 +8,9 @@
 #   도입 tip(^2)이 origin/develop 의 ancestor 가 아닌 것만 (브랜치명은 머지 메시지에서 추출 → 삭제 무관).
 #
 # 사용법: bash scripts/carryover-branches.sh <staging-ref>   # 예: staging/0.23
-#   출력: 브랜치명 한 줄에 하나 (정렬·중복제거). 없으면 빈 출력.
-#   ※ 호출 전 git fetch 는 호출자 책임 (헬퍼는 fetch 하지 않음).
+#   출력: "<브랜치명>\t<도입 tip(^2) 커밋SHA>" 한 줄에 하나 (브랜치별 최신 머지, 정렬). 없으면 빈 출력.
+#   SHA 를 함께 내보내는 이유: 브랜치가 origin 에서 삭제돼도 머지 기록(^2)으로 carry-over 를
+#   보존할 수 있게 한다(refresh-staging 의 폴백). ※ git fetch 는 호출자 책임.
 #
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -23,12 +24,15 @@ git rev-parse --verify --quiet "${STAGING_REF}" >/dev/null \
   || { echo "❌ staging ref 없음: ${STAGING_REF}" >&2; exit 1; }
 
 CARRY=""
+SEEN=" "
 while IFS=$'\x1f' read -r hash subject; do
   br="$(printf '%s' "${subject}" | grep -oE '(feature|hotfix|fix)/[A-Za-z0-9._/-]+' | head -1 || true)"
   [ -z "${br}" ] && continue
+  case "${SEEN}" in *" ${br} "*) continue ;; esac  # 같은 브랜치는 최신 머지만 (git log 는 최신순)
   p2="$(git rev-parse "${hash}^2" 2>/dev/null)" || continue
   git merge-base --is-ancestor "${p2}" origin/develop && continue  # 이미 develop 반영 → 제외
-  CARRY="${CARRY}${br}"$'\n'
+  SEEN="${SEEN}${br} "
+  CARRY="${CARRY}$(printf '%s\t%s' "${br}" "${p2}")"$'\n'
 done < <(git log "origin/develop..${STAGING_REF}" --merges --pretty='%H%x1f%s')
 
-printf '%s' "${CARRY}" | sed '/^$/d' | sort -u
+printf '%s' "${CARRY}" | sed '/^$/d' | sort

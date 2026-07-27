@@ -45,18 +45,24 @@ fi
 echo "▶ 새 staging 라인 생성: ${TARGET} (origin/develop=${DEV_VERSION} 기준)"
 git switch -c "${TARGET}" origin/develop
 
-# carry-over 자동 머지 (origin 기준). 없는 브랜치는 skip, 충돌이면 롤백 후 수동 안내.
+# carry-over 자동 머지. origin/<branch> 있으면 최신 tip, 삭제됐으면 머지 기록(^2)으로 폴백.
+# (조용한 skip 금지 — carry-over 를 잃지 않는다. ^2 도 없을 때만 skip.)
 MERGED=()
 if [ -n "${CARRY}" ]; then
-  echo "▶ carry-over 자동 머지 대상:"; printf '%s\n' "${CARRY}" | sed 's/^/     - /'
-  while IFS= read -r BR; do
+  echo "▶ carry-over 자동 머지 대상:"; printf '%s\n' "${CARRY}" | cut -f1 | sed 's/^/     - /'
+  while IFS=$'\t' read -r BR SHA; do
     [ -z "${BR}" ] && continue
-    if ! git rev-parse --verify --quiet "refs/remotes/origin/${BR}" >/dev/null; then
-      echo "  ⚠️  origin/${BR} 없음 → skip (삭제됐거나 다른 경로로 반영됨)"
+    if git rev-parse --verify --quiet "refs/remotes/origin/${BR}" >/dev/null; then
+      REF="origin/${BR}"                       # 브랜치 살아있음 → 최신 tip (테스트 계속)
+    elif [ -n "${SHA}" ] && git rev-parse --verify --quiet "${SHA}^{commit}" >/dev/null; then
+      REF="${SHA}"                             # 삭제됨 → 머지 기록(^2) 스냅샷으로 보존
+      echo "  ℹ️  origin/${BR} 없음 → 머지 기록(${SHA:0:9})으로 carry-over 보존"
+    else
+      echo "  ⚠️  ${BR}: origin ref·머지 기록 모두 없음 → skip"
       continue
     fi
-    echo "  ▶ origin/${BR} → ${TARGET} 머지"
-    if ! git merge --no-ff -m "Merge branch '${BR}' into ${TARGET}" "origin/${BR}"; then
+    echo "  ▶ ${BR} (${REF}) → ${TARGET} 머지"
+    if ! git merge --no-ff -m "Merge branch '${BR}' into ${TARGET}" "${REF}"; then
       git merge --abort || true
       # origin 엔 빈 라인만 남기고(수동 인계용) 로컬 되돌림
       git reset --hard origin/develop >/dev/null
@@ -66,7 +72,7 @@ if [ -n "${CARRY}" ]; then
       echo "❌ carry-over 머지 충돌: ${BR}"
       echo "   ${TARGET} 는 origin 에 develop 기준으로 생성됐습니다(빈 라인)."
       echo "   충돌을 해결하며 수동으로 이어서 진행하세요:"
-      echo "     yarn staging:merge $(printf '%s ' ${CARRY})"
+      echo "     yarn staging:merge $(printf '%s\n' "${CARRY}" | cut -f1 | tr '\n' ' ')"
       echo "   (충돌 해결 → git add → git commit → yarn staging:deploy)"
       exit 1
     fi
