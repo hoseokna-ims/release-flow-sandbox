@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.26.0] - 2026-07-27
+
+### feature/FE-1028
+- fix: 삭제된 carry-over 브랜치를 머지 기록(^2)으로 보존 ([d204c4c](https://github.com/hoseokna-ims/release-flow-sandbox/commit/d204c4ce0cc887341a9cbd762e09b148ff98baff))
+
 ## [0.25.0] - 2026-07-24
 
 ### feature/FE-1027
