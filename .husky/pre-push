@@ -5,14 +5,45 @@
 # ※ imsform-mobile-web 에는 이 저장소가 검증한 이 블록을, 기존 .husky/pre-push 의
 #    tsc/test 검사 "뒤에 append" 한다. (샌드박스는 tsc/test 검사가 없어 가드만 둔다.)
 
-# 운영(master) 푸시 시 스테이징 버전(patch!=0) 차단
+ZERO=0000000000000000000000000000000000000000
+
+# 운영(master) 푸시 가드
+#  1) 스테이징 버전(patch!=0) 차단
+#  2) 태그 정합성 — package.json 의 version 과 같은 이름의 태그가 그 커밋을 가리켜야 한다.
+#     정상 플로우(yarn release/hotfix finish)는 master·develop·태그를 --atomic 으로 함께
+#     푸시하므로 통과한다. 래퍼를 우회한 경로(git flow 직접 호출 후 태그 없이 푸시,
+#     수동 머지 푸시, 동일 버전 재배포)만 정확히 차단된다.
 while read -r local_ref local_sha remote_ref remote_sha; do
-  if [ "$remote_ref" = "refs/heads/master" ]; then
-    VERSION=$(node -p "require('./package.json').version")
-    if [ "${VERSION##*.}" != "0" ]; then
-      echo "❌ 운영(master)에 스테이징 버전 $VERSION 은 푸시할 수 없습니다. (patch는 0이어야 함)"
-      exit 1
-    fi
+  [ "$remote_ref" = "refs/heads/master" ] || continue
+  [ "$local_sha" = "$ZERO" ] && continue   # 브랜치 삭제 푸시는 대상 아님
+
+  # 버전은 워킹트리가 아니라 "푸시되는 커밋"에서 읽는다.
+  # (워킹트리를 읽으면 master 를 푸시할 때 다른 브랜치가 체크아웃돼 있으면 오판한다)
+  VERSION=$(git show "${local_sha}:package.json" 2>/dev/null \
+    | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+  if [ -z "$VERSION" ]; then
+    echo "❌ 푸시할 커밋의 package.json 에서 version 을 읽지 못했습니다."
+    exit 1
+  fi
+
+  if [ "${VERSION##*.}" != "0" ]; then
+    echo "❌ 운영(master)에 스테이징 버전 $VERSION 은 푸시할 수 없습니다. (patch는 0이어야 함)"
+    exit 1
+  fi
+
+  TAG_SHA=$(git rev-parse -q --verify "refs/tags/${VERSION}^{commit}" 2>/dev/null || true)
+  if [ -z "$TAG_SHA" ]; then
+    echo "❌ 태그 $VERSION 이 없습니다 — 정상 릴리스 플로우를 경유하지 않은 푸시입니다."
+    echo "   → yarn release finish 또는 yarn hotfix finish 로 진행하세요."
+    echo "     (git flow 를 직접 호출하면 bump·changelog·태그가 생성되지 않습니다)"
+    exit 1
+  fi
+  if [ "$TAG_SHA" != "$local_sha" ]; then
+    echo "❌ 태그 $VERSION 이 다른 커밋을 가리킵니다 — 버전 bump 없는 재배포입니다."
+    echo "   태그 $VERSION → ${TAG_SHA}"
+    echo "   푸시 대상      → ${local_sha}"
+    echo "   → 새 버전으로 릴리스하세요: yarn hotfix start && yarn hotfix finish"
+    exit 1
   fi
 done
 
