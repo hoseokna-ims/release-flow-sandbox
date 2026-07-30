@@ -144,7 +144,7 @@ restore_branch() { git switch "${ORIG_BRANCH}" >/dev/null 2>&1 || true; }
 
 ### 4.4 `new-staging.sh` — 3겹 개선 (#4)
 
-**문제(실측, 0.50 사건 재현)**: ① "이미 존재합니다" 메시지가 막다른 골목 → 사용자를 임의 override 로 유도 ② override 인자 무검증(`staging/banana` 생성됨, develop 라인과 무관한 `0.27` 도 통과) ③ 오펀 라인 생성 시 `staging:merge`·`staging:new` 가 상호 차단(데드락).
+**문제(실측, 0.50 사건 재현)**: ① "이미 존재합니다" 메시지가 막다른 골목 → 사용자를 임의 override 로 유도 ② override 인자 무검증(`staging/banana` 생성됨, develop 라인과 무관한 `0.27` 도 통과) ③ 선행 라인 생성 시 `staging:merge`·`staging:new` 가 상호 차단(데드락).
 
 **설계**:
 
@@ -165,9 +165,9 @@ echo "❌ ${BRANCH} 가 이미 존재합니다."
 echo "   → 작업을 올리려면: (작업 브랜치에서) yarn staging:merge"
 echo "   → 라인을 다시 만들려면: git push origin --delete ${BRANCH} 후 재실행"
 
-# ③ 데드락 감지: 최신 staging 라인 > develop 라인이면 오펀으로 판정
+# ③ 데드락 감지: 최신 staging 라인 > develop 라인이면 선행 라인으로 판정
 if [ -n "${LATEST}" ] && [ "$(printf '%s\n%s' "${LATEST#staging/}" "${DEV_MINOR}" | sort -t. -k1,1n -k2,2n | tail -1)" != "${DEV_MINOR}" ]; then
-  echo "⚠️  최신 staging(${LATEST})이 develop(${DEV_MINOR}) 보다 앞선 라인입니다 — 오펀 라인으로 보입니다."
+  echo "⚠️  최신 staging(${LATEST})이 develop(${DEV_MINOR}) 보다 앞선 라인입니다 — 선행 라인입니다."
   echo "   → 배포 이력이 없다면 삭제하세요: git push origin --delete ${LATEST}"
 fi
 ```
@@ -374,7 +374,7 @@ rollback_baseline() {
 | push 실패 | 브랜치 삭제됨·고아 태그·수동 수습 | 완전 복원, 같은 명령 재실행 |
 | finish 재실행 | CHANGELOG 섹션 중복 | 멱등 (Phase 1 skip + changelog 교체) |
 | 옛 staging 라인 deploy (D1) | staging 태그가 옛 코드로 이동 | #3 라인 가드 차단 |
-| staging:new 임의 인자 (N2/N3) | staging/banana·오펀 라인 → 데드락 | #4 검증·확인·데드락 감지 |
+| staging:new 임의 인자 (N2/N3) | staging/banana·선행 라인 → 데드락 | #4 검증·확인·데드락 감지 |
 | feature 에서 push-tag prod (P1) | **운영 배포 트리거** | #1 가드 차단 |
 
 ---
