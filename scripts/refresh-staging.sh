@@ -84,7 +84,9 @@ fi
 git push -u origin "${TARGET}" >/dev/null
 
 # 항상 배포 (patch +1) — carry-over 유무 무관. bump+commit+push+staging 태그는 deploy-staging 에 위임.
-bash scripts/deploy-staging.sh
+# --force: 방금 만든 라인이므로 deploy-staging 의 '최신 라인' 검사는 불필요하다.
+#   (선행 라인이 원격에 남아 있으면 그 검사가 오작동해 정상 리프레시를 막을 수 있다)
+bash scripts/deploy-staging.sh --force
 
 restore_branch
 if [ "${#MERGED[@]}" -gt 0 ]; then

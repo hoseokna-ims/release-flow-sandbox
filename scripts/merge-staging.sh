@@ -8,8 +8,16 @@
 #   대상은 origin 기준으로 머지한다 → 로컬에 push 안 된 커밋이 있으면 차단(먼저 push 하도록).
 #   머지 충돌 시: 즉시 중단하고 안내(해결·커밋 후 yarn staging:deploy 로 마무리).
 #
+# 성공하면 실행 전 브랜치로 복귀한다 — staging 에 남으면 곧바로 이어지는
+# yarn release/hotfix finish 가 브랜치 검사에서 튕겨 수동 우회를 유발한다.
+#
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
+
+# 실행 전 브랜치 기억 (성공 시 복귀용). 중단 경로에서는 복귀하지 않는다 —
+# 충돌 해결·재배포는 staging 브랜치 위에서 이어져야 하기 때문.
+ORIG_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+restore_branch() { git switch "${ORIG_BRANCH}" >/dev/null 2>&1 || true; }
 
 if [ "$#" -eq 0 ]; then
   # 인자 없음 → 현재 브랜치를 대상으로 (실행 중 staging 으로 switch 하므로 work 브랜치에서만 허용)
@@ -112,3 +120,6 @@ fi
 
 sh scripts/push-tag.sh staging
 echo "✅ [${BRANCHES[*]}] → ${LATEST} 머지·배포 완료 (${AFTER})"
+
+restore_branch
+echo "↩︎ ${ORIG_BRANCH} 브랜치로 돌아왔습니다."
