@@ -13,6 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 태그 정합성 검사를 위해 전체 히스토리 + 태그를 받아온다
+          fetch-depth: 0
+          fetch-tags: true
       - name: Version guard (운영 버전 검증)
         run: |
           VERSION=$(node -p "require('./package.json').version")
@@ -21,5 +25,21 @@ jobs:
             echo "::error::운영 배포 차단 — 스테이징 버전($VERSION) 감지 (patch는 0이어야 함)"
             exit 1
           fi
+      - name: Tag guard (태그 정합성 검증)
+        # package.json 의 version 과 같은 이름의 태그가 배포 커밋을 가리켜야 한다.
+        # 정상 플로우는 master·develop·태그를 --atomic 으로 함께 푸시하므로 통과한다.
+        # 래퍼 우회(git flow 직접 호출 후 태그 누락)·동일 버전 재배포만 차단된다.
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG_SHA=$(git rev-parse -q --verify "refs/tags/${VERSION}^{commit}" || true)
+          if [ -z "$TAG_SHA" ]; then
+            echo "::error::운영 배포 차단 — 태그 $VERSION 이 없습니다. 정상 릴리스 플로우(yarn release/hotfix finish)를 경유하지 않은 배포입니다."
+            exit 1
+          fi
+          if [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::운영 배포 차단 — 태그 $VERSION 이 다른 커밋($TAG_SHA)을 가리킵니다. 버전 bump 없는 재배포입니다."
+            exit 1
+          fi
+          echo "태그 $VERSION → $TAG_SHA (배포 커밋과 일치)"
       - name: (stub) prod 배포 트리거 확인
         run: echo "✅ prod 배포가 트리거됨 (version=$(node -p "require('./package.json').version"))"
