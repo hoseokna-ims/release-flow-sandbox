@@ -9,6 +9,7 @@
 #
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
+source scripts/lib/checks.sh
 
 start() {
   local TYPE="${1:-minor}"
@@ -17,27 +18,21 @@ start() {
     *) echo "사용법: yarn release start [minor|major]"; exit 1 ;;
   esac
 
-  echo "▶ [사전검사] fetch + 최신/클린 확인"
-  git fetch origin --prune
-  [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 워킹트리 클린 아님"; exit 1; }
-  for BR in develop master; do
-    read -r behind _ < <(git rev-list --left-right --count "origin/${BR}...${BR}" 2>/dev/null || echo "0 0")
-    [ "${behind}" -gt 0 ] && { echo "❌ ${BR} 가 origin 보다 ${behind} 커밋 뒤처짐 → git pull 후 재시도"; exit 1; }
-  done
+  echo "▶ [사전검사] 도구·워킹트리·잔재 브랜치"
+  require_gitflow
+  require_clean_tree
+  require_no_stale_topic release
+
+  echo "▶ [사전검사] fetch + develop/master 동기화"
+  require_synced develop master
 
   local NEXT; NEXT="$(node scripts/next-version.mjs "${TYPE}")"
   echo "▶ 다음 버전: ${NEXT} (${TYPE})"
-  git rev-parse "${NEXT}" >/dev/null 2>&1 && { echo "❌ 태그 ${NEXT} 가 이미 존재합니다."; exit 1; }
+  require_semver_version "${NEXT}"
+  require_tag_absent "${NEXT}"
 
   echo "▶ [사전검사] master 머지 충돌 시뮬 (package.json/lock 제외)"
-  local MT; MT="$(mktemp)"
-  if ! git merge-tree --write-tree --name-only master develop >"${MT}" 2>/dev/null; then
-    local CONFLICTS; CONFLICTS="$(tail -n +2 "${MT}" | grep -v -e '^$' -e 'package.json' -e 'package-lock.json' || true)"
-    if [ -n "${CONFLICTS}" ]; then
-      echo "❌ master 머지 충돌 예상:"; echo "${CONFLICTS}"; rm -f "${MT}"; exit 1
-    fi
-  fi
-  rm -f "${MT}"
+  require_merge_clean master develop
 
   git flow release start "${NEXT}"
   echo "✅ release/${NEXT} 시작. (선택) 안정화 작업·커밋 후 → yarn release finish"
