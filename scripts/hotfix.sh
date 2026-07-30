@@ -7,6 +7,7 @@
 #
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
+source scripts/lib/checks.sh
 
 start() {
   local TYPE="${1:-minor}"
@@ -14,13 +15,25 @@ start() {
     minor|major) ;;
     *) echo "사용법: yarn hotfix start [minor|major]"; exit 1 ;;
   esac
-  git fetch origin --prune
-  [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 워킹트리 클린 아님"; exit 1; }
-  read -r behind _ < <(git rev-list --left-right --count "origin/master...master" 2>/dev/null || echo "0 0")
-  [ "${behind}" -gt 0 ] && { echo "❌ master 가 origin 보다 뒤처짐 → git pull 후 재시도"; exit 1; }
+
+  echo "▶ [사전검사] 도구·워킹트리·잔재 브랜치"
+  require_gitflow
+  require_clean_tree
+  require_no_stale_topic hotfix
+
+  # develop 도 검사한다 — finish 가 develop 에 되머지하므로, master 만 보면
+  # 수정을 다 한 뒤 finish 단계에서야 문제를 알게 된다(release.sh 와 대칭).
+  echo "▶ [사전검사] fetch + master/develop 동기화"
+  require_synced master develop
 
   local NEXT; NEXT="$(node scripts/next-version.mjs "${TYPE}")"
-  git rev-parse "${NEXT}" >/dev/null 2>&1 && { echo "❌ 태그 ${NEXT} 이미 존재"; exit 1; }
+  echo "▶ 다음 버전: ${NEXT} (${TYPE})"
+  require_semver_version "${NEXT}"
+  require_tag_absent "${NEXT}"
+
+  # 되머지 방향 시뮬 — master↔develop 이 이미 충돌 상태면 핫픽스 전에 해결해야 한다.
+  echo "▶ [사전검사] develop 되머지 충돌 시뮬 (package.json/lock 제외)"
+  require_merge_clean develop master
 
   git flow hotfix start "${NEXT}"
   echo "✅ hotfix/${NEXT} 시작. 수정·커밋 후 → yarn hotfix finish"
