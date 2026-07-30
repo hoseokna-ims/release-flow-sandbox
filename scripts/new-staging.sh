@@ -52,11 +52,11 @@ LATEST_LINE="$(git branch -r --list 'origin/staging/*' | sed 's#.*origin/staging
 LATEST=""
 [ -n "${LATEST_LINE}" ] && LATEST="staging/${LATEST_LINE}"
 
-# 오펀 라인 가드: 최신 staging 이 develop 보다 앞선 라인이면 정상 플로우로는 생길 수 없는 상태다.
+# 선행 라인 가드: 최신 staging 이 develop 보다 앞선 라인이면 정상 플로우로는 생길 수 없는 상태다.
 # 그대로 두면 staging:merge 가 라인 불일치로 계속 차단되므로(양쪽 잠김) 먼저 정리하게 만든다.
 if [ -n "${LATEST_LINE}" ] && [ "${LATEST_LINE}" != "${DEV_MINOR}" ] && [ \
   "$(printf '%s\n%s\n' "${LATEST_LINE}" "${DEV_MINOR}" | sort -t. -k1,1n -k2,2n | tail -1)" = "${LATEST_LINE}" ]; then
-  echo "❌ 최신 staging(${LATEST})이 develop(${DEV_MINOR}) 보다 앞선 라인입니다 — 오펀 라인입니다."
+  echo "❌ 최신 staging(${LATEST})이 develop(${DEV_MINOR}) 보다 앞선 라인입니다 — 선행 라인입니다."
   echo "   이 상태에서는 yarn staging:merge 가 라인 불일치로 계속 차단됩니다."
   echo "   → 배포 이력이 없다면 삭제 후 재실행하세요: git push origin --delete ${LATEST}"
   exit 1
