@@ -64,6 +64,58 @@ require_clean_tree() {
   exit 1
 }
 
+# finish 전용 — 워킹트리가 깨끗하거나, 더러운 게 'Phase 1 이 만들다 만 자기 산출물'
+# 뿐이면 통과시킨다. Phase 1 이 중단되면(Ctrl-C 등 시그널에는 ERR 트랩이 안 걸린다)
+# bump·changelog 가 커밋 안 된 채 남는데, 이건 사용자 작업이 아니라 스크립트 출력이고
+# Phase 1 은 멱등이라(bump 는 같은 값, changelog.mjs 는 같은 버전 섹션을 교체) 그대로
+# 덮어쓰면 된다. 여기서 막으면 사용자는 자기가 만들지도 않은 변경을 stash 해야 한다.
+#
+# 판정은 좁게 — 두 조건을 다 만족할 때만.
+#   1) 더러운 경로가 {package.json, package-lock.json, CHANGELOG.md} 안에만 있다
+#   2) package.json 의 version 이 이미 이번 릴리스 버전이다 (= 우리 bump 가 돌았다는 증거)
+# 하나라도 어긋나면 사용자 변경일 수 있으므로 기존대로 차단한다.
+require_clean_tree_or_own_artifacts() {
+  local VERSION="$1" DIRTY P PKG_VERSION
+  DIRTY="$(git status --porcelain --untracked-files=no)"
+  [ -z "${DIRTY}" ] && return 0
+
+  PKG_VERSION="$(node -p "require('./package.json').version" 2>/dev/null || echo "")"
+  if [ "${PKG_VERSION}" = "${VERSION}" ]; then
+    local OURS=1
+    while IFS= read -r P; do
+      [ -z "${P}" ] && continue
+      P="${P:3}"                                   # porcelain v1: XY<space><path>
+      case "${P}" in
+        *" -> "*) OURS=0 ;;                        # 리네임 — 우리 산출물이 아니다
+        package.json | package-lock.json | CHANGELOG.md) ;;
+        *) OURS=0 ;;
+      esac
+    done < <(printf '%s\n' "${DIRTY}")
+    if [ "${OURS}" -eq 1 ]; then
+      echo "ℹ️  중단된 준비 단계의 산출물이 남아 있습니다 → 다시 생성해 이어갑니다:"
+      git status --short --untracked-files=no | sed 's/^/     /'
+      return 0
+    fi
+  fi
+
+  require_clean_tree
+}
+
+# 이어받을 수 있는 토픽 브랜치를 찾는다 — 정확히 하나일 때만 이름을 출력한다.
+# (한 개도 없거나 둘 이상이면 추측하지 않는다: 무출력)
+find_resumable_topic() {
+  local PREFIX="$1" B FOUND="" COUNT=0
+  while IFS= read -r B; do
+    [ -z "${B}" ] && continue
+    [[ "${B}" =~ ^${PREFIX}/[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+    if is_resumed_finish "${PREFIX}" "${B#"${PREFIX}"/}"; then
+      FOUND="${B}"; COUNT=$((COUNT + 1))
+    fi
+  done < <(git for-each-ref --format='%(refname:short)' "refs/heads/${PREFIX}/*" || true)
+  [ "${COUNT}" -eq 1 ] && printf '%s' "${FOUND}"
+  return 0
+}
+
 # 릴리스 버전 형식(X.Y.0). 운영 버전은 patch=0 이 규칙이다.
 require_semver_version() {
   local V="$1"
