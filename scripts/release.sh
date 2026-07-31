@@ -38,40 +38,77 @@ start() {
 }
 
 finish() {
-  local BRANCH; BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+  local BRANCH VERSION LAST
+  BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+
+  # ── Phase 0: PREFLIGHT ──────────────────────────────────────────────
+  # 읽기 전용. 하나라도 실패하면 아무것도 건드리지 않고 끝낸다(P1).
   case "${BRANCH}" in
     release/*) ;;
-    *) echo "❌ release/* 브랜치에서 실행하세요 (현재: ${BRANCH})"; exit 1 ;;
+    *)
+      echo "❌ release/* 브랜치에서 실행하세요 (현재: ${BRANCH})"
+      LAST="$(git for-each-ref --format='%(refname:short)' 'refs/heads/release/*' | tail -1)"
+      if [ -n "${LAST}" ]; then
+        echo "   → git switch ${LAST} 후 다시 실행하세요."
+      fi
+      exit 1
+      ;;
   esac
-  local VERSION="${BRANCH#release/}"
-  [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "❌ 작업을 먼저 커밋하세요"; exit 1; }
+  VERSION="${BRANCH#release/}"
 
-  trap 'echo "❌ release finish 중단. git status 확인 후 수동 마무리하세요."' ERR
-  echo "▶ bump + changelog (${VERSION})"
-  node scripts/bump-version.mjs "${VERSION}" >/dev/null
-  node scripts/changelog.mjs "${VERSION}"
-  git add package.json
-  [ -f package-lock.json ] && git add package-lock.json || true
-  [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
-  git commit -qm "chore: release ${VERSION}"
-
-  echo "▶ master·develop 머지 + 태그 ${VERSION}"
+  echo "▶ [사전검사] 버전·워킹트리·동기화·머지 충돌"
+  require_semver_version "${VERSION}"
+  require_clean_tree
+  require_synced master develop
   require_topic_synced "${BRANCH}"
-  topic_finish release "${VERSION}"
+  require_merge_clean master  "${BRANCH}"
+  require_merge_clean develop "${BRANCH}"
+  record_baseline "${BRANCH}"
 
+  # ── Phase 1: PREPARE ────────────────────────────────────────────────
+  # 실패하면 브랜치를 시작 tip 으로 되돌린다 — 더럽혀진 트리가 남아 재실행이
+  # 다른 에러로 튕기는 2차 함정을 없앤다(P3).
+  if git log -1 --format=%s | grep -qF "chore: release ${VERSION}"; then
+    echo "ℹ️  bump 커밋이 이미 있습니다 → 준비 단계 skip (재실행)"
+  else
+    trap 'rollback_baseline "${VERSION}"; echo "❌ 준비 단계 실패 — 브랜치를 시작 상태로 되돌렸습니다." >&2; echo "   원인(위 메시지)을 해결한 뒤 같은 명령을 재실행하세요." >&2' ERR
+    echo "▶ bump + changelog (${VERSION})"
+    node scripts/bump-version.mjs "${VERSION}" >/dev/null
+    node scripts/changelog.mjs "${VERSION}"
+    git add package.json
+    [ -f package-lock.json ] && git add package-lock.json || true
+    [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
+    git commit -qm "chore: release ${VERSION}"
+    trap - ERR
+  fi
+
+  # ── Phase 2: MERGE/TAG ──────────────────────────────────────────────
+  echo "▶ master·develop 머지 + 태그 ${VERSION}"
+  if ! topic_merge_and_tag release "${VERSION}"; then
+    rollback_baseline "${VERSION}"
+    echo "❌ 머지 실패 — master/develop/태그를 시작 전 상태로 복원했습니다." >&2
+    echo "   ${BRANCH} 는 그대로 있습니다. 충돌을 해결한 뒤 같은 명령을 재실행하세요." >&2
+    exit 1
+  fi
+
+  # ── Phase 3: PUBLISH ────────────────────────────────────────────────
+  # 브랜치 삭제는 push 성공 뒤에만 한다(P2) — 실패 시 재실행이 가능해야 하고,
+  # 고아 태그가 남으면 다음 버전 계산(next-version.mjs)이 그 값을 건너뛴다.
   echo "▶ push (master 푸시 = 운영 배포 트리거)"
   # --atomic: master/develop/태그 3개 ref 를 전부 성공 or 전부 실패로 push (부분 반영=스플릿 방지)
   if ! git push --atomic origin master develop "${VERSION}"; then
-    echo "❌ push 실패(원자적으로 아무것도 반영되지 않음). 원격이 앞서 있을 수 있습니다." >&2
-    echo "   실제 원격 반영 상태:" >&2
-    git ls-remote origin master develop "refs/tags/${VERSION}" >&2 || true
-    echo "   → 머지·태그는 이미 로컬에 반영됨(release 브랜치 삭제). git fetch 후 원격 변경을" >&2
-    echo "     master/develop 에 반영한 뒤 'git push --atomic origin master develop ${VERSION}' 를 수동 재실행하세요." >&2
+    rollback_baseline "${VERSION}"
+    echo "❌ push 실패 — 원격은 --atomic 으로 아무것도 반영되지 않았고, 로컬도 시작 전 상태로 복원했습니다." >&2
+    echo "   → git fetch 후 master/develop 을 최신화하고 같은 명령을 재실행하세요." >&2
     exit 1
+  fi
+  if ! topic_delete release "${VERSION}"; then
+    echo "⚠️ ${BRANCH} 삭제 실패 — 릴리스는 완료됐습니다. 수동 정리: git branch -d ${BRANCH}" >&2
   fi
   echo "✅ 릴리스 ${VERSION} 완료 — 태그 ${VERSION}, master 배포 트리거됨."
 
-  # 릴리스는 이미 끝났다(ERR trap 해제) → staging 리프레시는 best-effort, 실패해도 릴리스 성공 유지.
+  # ── Phase 4: STAGING (best-effort) ──────────────────────────────────
+  # 릴리스는 이미 끝났다 → staging 리프레시가 실패해도 릴리스 성공을 유지한다.
   trap - ERR
   echo "▶ staging 라인 리프레시 (develop 기준 새 staging + carry-over 자동 머지·배포)"
   if ! bash scripts/refresh-staging.sh; then

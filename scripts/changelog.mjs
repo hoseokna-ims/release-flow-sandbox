@@ -134,12 +134,23 @@ if (isStaging) {
   writeFileSync('STAGING_CHANGELOG.md', content);
   process.stdout.write(`  STAGING_CHANGELOG.md 재생성 (${version}, 범위 ${range}, 브랜치별 그룹)\n`);
 } else {
-  /** 운영: CHANGELOG.md 맨 위에 섹션 prepend (누적) */
+  /**
+   * 운영: CHANGELOG.md 맨 위에 섹션 prepend (누적).
+   * 같은 버전 섹션이 이미 있으면 제거하고 다시 넣는다(멱등) — finish 재실행이나
+   * 수동 복구 때 `## [X.Y.Z]` 가 중복으로 쌓이는 것을 막는다.
+   */
   const section = `## [${version}] - ${today}\n\n${renderGroups()}`;
   const FILE = 'CHANGELOG.md';
   let content;
   if (existsSync(FILE)) {
-    const current = readFileSync(FILE, 'utf8');
+    let current = readFileSync(FILE, 'utf8');
+    const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    /** `## [version] …` 헤딩부터 다음 `## [` 직전까지 = 그 버전 섹션 전체 */
+    const duplicate = new RegExp(`^## \\[${escaped}\\][^\\n]*\\n(?:(?!^## \\[)[\\s\\S])*`, 'm');
+    if (duplicate.test(current)) {
+      current = current.replace(duplicate, '');
+      process.stdout.write(`  기존 [${version}] 섹션을 교체합니다 (멱등)\n`);
+    }
     if (/^#\s/.test(current)) {
       const nl = current.indexOf('\n');
       const header = nl !== -1 ? current.slice(0, nl) : current;

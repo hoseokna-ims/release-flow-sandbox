@@ -199,15 +199,11 @@ topic_start() {
   git switch -q -c "${BRANCH}" "${BASE}"
 }
 
-# 1) master 머지 → 2) 태그 → 3) develop 에 '태그' 되머지 → 4) 브랜치 삭제
+# 1) master 머지 → 2) 태그 → 3) develop 에 '태그' 되머지
 # 각 단계는 이미 완료됐으면 건너뛴다 (중단 후 재실행 대비 — avh 와 동일).
-topic_finish() {
-  local PREFIX="$1" VERSION="$2" BRANCH="$1/$2" AFTER_DELETE
-  # 삭제 직전 돌아갈 브랜치: release→master, hotfix→develop (avh 동작)
-  case "${PREFIX}" in
-    release) AFTER_DELETE=master ;;
-    *)       AFTER_DELETE=develop ;;
-  esac
+# 브랜치 삭제는 topic_delete 로 분리했다 — push 성공 뒤에만 지우기 위해서다(P2).
+topic_merge_and_tag() {
+  local PREFIX="$1" VERSION="$2" BRANCH="$1/$2"
 
   if ! is_merged_into "${BRANCH}" master; then
     git checkout -q master
@@ -225,13 +221,59 @@ topic_finish() {
     git checkout -q develop
     GIT_MERGE_AUTOEDIT=no git merge --no-ff "${VERSION}" || return 1
   fi
+}
 
-  # 원격 먼저, 로컬 나중 (avh 순서 — 로컬을 먼저 지우면 경고가 난다)
+# 브랜치 정리 — 원격 먼저, 로컬 나중 (avh 순서: 로컬을 먼저 지우면 경고가 난다)
+topic_delete() {
+  local PREFIX="$1" VERSION="$2" BRANCH="$1/$2" AFTER_DELETE
+  # 삭제 직전 돌아갈 브랜치: release→master, hotfix→develop (avh 동작)
+  case "${PREFIX}" in
+    release) AFTER_DELETE=master ;;
+    *)       AFTER_DELETE=develop ;;
+  esac
   if [ "$(git rev-parse --abbrev-ref HEAD)" = "${BRANCH}" ]; then
     git checkout -q "${AFTER_DELETE}"
   fi
   if git rev-parse --verify --quiet "refs/remotes/origin/${BRANCH}" >/dev/null; then
     git push -q origin ":refs/heads/${BRANCH}" 2>/dev/null || true
   fi
-  git branch -q -d "${BRANCH}" || return 1
+  git branch -q -d "${BRANCH}"
+}
+
+# ── 롤백 지원 ─────────────────────────────────────────────────────────
+# finish 는 ref 를 여러 개 순차로 바꾼다(브랜치 tip → master → 태그 → develop).
+# 중간에 실패하면 반쯤 끝난 상태가 남아 재실행이 불가능해지므로, 시작 전 SHA 를
+# 기록해 두고 실패 시 전부 되돌린다.
+#
+# 기준은 origin 이 아니라 "시작 시점의 로컬 SHA" 다 — preflight 에서 ahead 를
+# 승인받은 경우 origin 으로 리셋하면 승인된 로컬 커밋이 유실된다.
+BASE_MASTER=""; BASE_DEVELOP=""; BASE_TOPIC_TIP=""; BASE_TOPIC_BRANCH=""
+
+record_baseline() {
+  BASE_TOPIC_BRANCH="$1"
+  BASE_MASTER="$(git rev-parse master)"
+  BASE_DEVELOP="$(git rev-parse develop)"
+  BASE_TOPIC_TIP="$(git rev-parse "${BASE_TOPIC_BRANCH}")"
+}
+
+# 실패 시 master/develop/태그/토픽 브랜치를 기록된 시작 상태로 되돌린다.
+# 원격은 --atomic push 덕분에 애초에 무변경이므로 로컬만 복원하면 재실행 가능 상태가 된다.
+rollback_baseline() {
+  local VERSION="${1:-}"
+  git merge --abort >/dev/null 2>&1 || true
+
+  # 토픽 브랜치를 먼저 복원·체크아웃한다 — master/develop 을 -f 로 옮기려면
+  # 그 브랜치가 체크아웃돼 있지 않아야 한다.
+  if ! git rev-parse --verify --quiet "refs/heads/${BASE_TOPIC_BRANCH}" >/dev/null; then
+    git branch "${BASE_TOPIC_BRANCH}" "${BASE_TOPIC_TIP}" >/dev/null 2>&1 || true
+  fi
+  git checkout -q -f "${BASE_TOPIC_BRANCH}" >/dev/null 2>&1 || true
+  git reset -q --hard "${BASE_TOPIC_TIP}" >/dev/null 2>&1 || true
+
+  git branch -f master  "${BASE_MASTER}"  >/dev/null 2>&1 || true
+  git branch -f develop "${BASE_DEVELOP}" >/dev/null 2>&1 || true
+  if [ -n "${VERSION}" ]; then
+    git tag -d "${VERSION}" >/dev/null 2>&1 || true
+  fi
+  return 0
 }
