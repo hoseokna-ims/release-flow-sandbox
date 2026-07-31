@@ -13,6 +13,7 @@
 #
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
+source scripts/lib/checks.sh
 
 # 실행 전 브랜치 기억 (성공 시 복귀용). 중단 경로에서는 복귀하지 않는다 —
 # 충돌 해결·재배포는 staging 브랜치 위에서 이어져야 하기 때문.
@@ -55,7 +56,15 @@ DEV_MINOR="$(git show origin/develop:package.json | grep -m1 '"version"' \
 DEV_MINOR="${DEV_MINOR%.*}"
 if [ "${DEV_MINOR}" != "${LATEST_LINE}" ]; then
   echo "❌ develop 은 ${DEV_MINOR} 라인인데 최신 staging 은 ${LATEST}(${LATEST_LINE} 라인)입니다."
-  echo "   릴리스로 라인이 올라갔습니다 → 먼저 'yarn staging:new'(staging/${DEV_MINOR} 생성) 후 다시 실행하세요."
+  # 최신 staging 이 develop 보다 '앞선' 라인이면 선행 라인이다 — 이때는 staging:new 도
+  # "이미 develop 포함" 가드에 걸려 양쪽이 잠긴다. 원인을 구분해 안내한다.
+  if [ "$(printf '%s\n%s\n' "${LATEST_LINE}" "${DEV_MINOR}" | sort -t. -k1,1n -k2,2n | tail -1)" = "${LATEST_LINE}" ]; then
+    echo "   ${LATEST} 가 develop 보다 앞선 라인입니다 — 선행 라인입니다."
+    echo "   yarn staging:new 도 막히므로 먼저 정리해야 합니다."
+    echo "   → 배포 이력이 없다면 삭제 후 재실행하세요: git push origin --delete ${LATEST}"
+  else
+    echo "   릴리스로 라인이 올라갔습니다 → 먼저 'yarn staging:new'(staging/${DEV_MINOR} 생성) 후 다시 실행하세요."
+  fi
   exit 1
 fi
 
@@ -81,6 +90,9 @@ echo "▶ 최신 staging: ${LATEST}"
 git switch "${LATEST}"
 git pull origin "${LATEST}" --no-edit
 
+# 빈 배포 판정 기준: 머지를 시작하기 직전의 tip
+MERGE_BASE_TIP="$(git rev-parse HEAD)"
+
 for BR in "${BRANCHES[@]}"; do
   # origin/<branch> 우선, 없으면 로컬 <branch>
   if git rev-parse --verify --quiet "refs/remotes/origin/${BR}" >/dev/null; then
@@ -101,6 +113,14 @@ for BR in "${BRANCHES[@]}"; do
     exit 1
   fi
 done
+
+# 머지 결과 새 커밋이 하나도 없으면(이미 전부 반영된 브랜치) 버전만 올라가는 빈 배포가 된다.
+# 의도한 재배포일 수 있으므로 차단하지 않고 확인만 받는다.
+if [ "$(git rev-list --count "${MERGE_BASE_TIP}..HEAD")" -eq 0 ]; then
+  echo "⚠️  머지로 추가된 새 커밋이 없습니다 — 이미 ${LATEST} 에 반영된 브랜치입니다."
+  echo "   계속하면 변경 없이 patch 만 올라가는 빈 배포가 됩니다."
+  confirm "   그래도 배포할까요?"
+fi
 
 BEFORE="$(node -p "require('./package.json').version")"
 node scripts/bump-version.mjs patch >/dev/null
