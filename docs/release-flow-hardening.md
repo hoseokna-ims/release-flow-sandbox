@@ -3,7 +3,7 @@
 > 2026-07-29 imsform-mobile-web hotfix 0.49.0 사고(버전 bump 없이 0.48.0 재배포) 분석에서 도출된
 > 릴리스 스크립트 전면 보완 설계. 모든 근거는 격리 하네스 실측으로 검증됨(§8 검증 계획 참고).
 >
-> 상태: **구현 진행 중** · 작성 2026-07-30
+> 상태: **샌드박스 구현 완료** (2026-07-31, develop 반영) · `imsform-mobile-web` FE-2793 이식 대기
 >
 > - 구현·검증: 이 저장소(release-flow-sandbox)에서 단위별 PR로 진행
 > - 최종 이식 대상: `imsform-mobile-web` **FE-2793** (PR 1개로 통합)
@@ -90,19 +90,19 @@
 
 ## 3. 작업 목록 및 우선순위
 
-| # | 샌드박스 브랜치 | 항목 | 심각도 | 파일 | 상태 |
+| # | 샌드박스 브랜치 | 항목 | PR | 검증 | 상태 |
 |---|---|---|---|---|---|
-| 1 | `feature/FE-1029` | `push-tag.sh` prod/staging 가드 + force-push 방식 (§4.1) | 🔴 | `scripts/push-tag.sh` | ✅ 구현·검증 완료 |
-| 2 | `feature/FE-1030` | `merge-staging.sh` 원래 브랜치 복귀 + `deploy-staging.sh` 최신 라인 가드 (§4.2·4.3) | 🔴 | staging 2종 | 대기 |
-| 3 | `feature/FE-1031` | `new-staging.sh` 3겹 개선(안내·인자 검증·데드락 감지) (§4.4) | 🔴 | `scripts/new-staging.sh` | 대기 |
-| 4 | `feature/FE-1032` | pre-push·prod.yaml **태그 정합성 가드** (§4.5) | 🔴 | `.husky/pre-push`, `prod.yaml` | 대기 |
-| 5 | `feature/FE-1033` | 공통 검사 라이브러리 + **start 보강** (§5·6.2) | 🟠 | `scripts/lib/checks.sh`(신규), release/hotfix | ✅ 구현·검증 완료 |
-| 6 | `feature/FE-1034` | **git flow 의존 제거** — 머지·태그·삭제를 avh 동등하게 직접 구현 (§6.1) | 🟠 | release/hotfix, `checks.sh`, `setup-versioning.sh`, README | 진행 중 (#5 의존) |
-| 7 | `feature/FE-1035` | **finish 재구성** — preflight 강화·롤백·push 후 삭제·changelog 멱등화 (§6.2·6.3) | 🟠 | release/hotfix, `changelog.mjs` | 대기 (#6 의존) |
-| 8 | `feature/FE-1036` | 문구 통일·M3 빈 배포 확인·`CONTRIBUTING.md` 팀 규칙 (§6.4) | 🟡 | 다수 | 대기 (#7 의존) |
+| 1 | `FE-1029` | `push-tag.sh` prod/staging 가드 + force-push (§4.1) | #26 | 11 | ✅ |
+| 2 | `FE-1030` | `merge-staging` 브랜치 복귀 + `deploy-staging` 최신 라인 가드 (§4.2·4.3) | #27 | 17 | ✅ |
+| 3 | `FE-1031` | `new-staging.sh` 인자 검증·선행 라인 차단·안내 개선 (§4.4) | #28 | 25 | ✅ |
+| 4 | `FE-1032` | pre-push·prod.yaml **태그 정합성 가드** (§4.5) | #29 | 18 | ✅ |
+| 5 | `FE-1033` | 공통 검사 라이브러리 + start 보강 (§5·6.2) | #30 | 39 | ✅ |
+| 6 | `FE-1034` | **git flow 의존 제거** — avh 1.12.3 동등 직접 구현 (§6.1) | #31 | 35 | ✅ |
+| 7 | `FE-1035` | **finish 4단계 재구성** — 사전검증·롤백·push 후 삭제 (§6.2·6.3) | #32 | 41 | ✅ |
+| 8 | `FE-1036` | staging 안내 보강·빈 배포 확인·`CONTRIBUTING.md` (§6.4) | #33 | 20 | ✅ |
+| 9 | `FE-1037` | 잔재 topic 브랜치 성격별 판정(잔재/진행중/오용) (§5) | #34 | 47 | ✅ |
 
-1~5 는 상호 독립이라 병렬 리뷰·머지 가능. 6→7→8 은 순차.
-각 PR 본문에 해당 probe 케이스 전후 비교 결과를 첨부한다(§8).
+**최종 통합 검증**: develop 기준 probe 8종 전건 재실행 **205/205 FAIL=0**, 사고 타임라인 재연 9개 지점 전부 의도대로(차단 5 · 통과 4).
 
 ### #6 과 #7 을 나눈 이유
 
