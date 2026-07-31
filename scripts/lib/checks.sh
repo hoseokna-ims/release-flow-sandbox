@@ -141,27 +141,43 @@ require_merge_clean() {
 # 접두사를 작업 브랜치에 오용한 경우가 특히 위험하다 — 그대로 finish 하면 그 브랜치가
 # master 에 머지되고 태그까지 붙는다.
 require_no_stale_topic() {
-  local PREFIX="$1" FOUND NON_SEMVER B
+  local PREFIX="$1" FOUND B HAS_WORK=0 HAS_MERGED=0
   FOUND="$(git for-each-ref --format='%(refname:short)' "refs/heads/${PREFIX}/*" || true)"
   [ -z "${FOUND}" ] && return 0
 
-  echo "❌ 로컬에 ${PREFIX}/* 브랜치가 이미 있습니다:"
-  printf '%s\n' "${FOUND}" | sed 's/^/     - /'
-  echo "   ${PREFIX} 는 한 번에 하나만 진행할 수 있습니다."
-
-  NON_SEMVER="$(printf '%s\n' "${FOUND}" | grep -vE "^${PREFIX}/[0-9]+\.[0-9]+\.[0-9]+$" || true)"
-  if [ -n "${NON_SEMVER}" ]; then
-    echo
-    echo "   ※ ${PREFIX}/ 접두사는 릴리스 플로우 전용입니다. 아래는 작업 브랜치로 보입니다:"
-    while IFS= read -r B; do
-      [ -z "${B}" ] && continue
-      echo "     → git branch -m ${B} fix/${B#"${PREFIX}"/}     (이름 변경 후 재실행)"
-    done < <(printf '%s\n' "${NON_SEMVER}")
-    echo "     (작업 브랜치는 fix/ 를 사용하세요 — ${PREFIX} finish 를 실행하면 그 브랜치가"
-    echo "      master 에 머지되고 태그까지 생성됩니다)"
-  fi
+  echo "❌ 로컬에 ${PREFIX}/* 브랜치가 이미 있습니다 — ${PREFIX} 는 한 번에 하나만 진행할 수 있습니다."
   echo
-  echo "   진행 중인 릴리스라면 먼저 마무리하세요: yarn ${PREFIX} finish"
+
+  # 브랜치마다 성격을 판정해 각각 맞는 명령을 제시한다.
+  #  · 비-semver        → 작업 브랜치 오용. rename
+  #  · semver + 머지완료 → 지난 릴리스의 잔재. 삭제 (finish 를 실행하면 안 된다)
+  #  · semver + 미머지   → 진행 중인 릴리스. finish
+  while IFS= read -r B; do
+    [ -z "${B}" ] && continue
+    if ! [[ "${B}" =~ ^${PREFIX}/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      HAS_WORK=1
+      echo "     - ${B}   (작업 브랜치로 보입니다 — ${PREFIX}/ 는 릴리스 전용)"
+      echo "       → git branch -m ${B} fix/${B#"${PREFIX}"/}"
+    elif git rev-parse --verify --quiet master >/dev/null 2>&1 \
+      && is_merged_into "${B}" master 2>/dev/null; then
+      HAS_MERGED=1
+      echo "     - ${B}   (master 에 머지 완료 — 지난 릴리스의 잔재)"
+      echo "       → git branch -d ${B}"
+    else
+      echo "     - ${B}   (미머지 — 진행 중인 릴리스로 보입니다)"
+      echo "       → git switch ${B} && yarn ${PREFIX} finish"
+    fi
+  done < <(printf '%s\n' "${FOUND}")
+
+  if [ "${HAS_WORK}" -eq 1 ]; then
+    echo
+    echo "   ※ 작업 브랜치는 fix/ 를 사용하세요 — ${PREFIX} finish 를 실행하면 그 브랜치가"
+    echo "      master 에 머지되고 태그까지 생성됩니다."
+  fi
+  if [ "${HAS_MERGED}" -eq 1 ]; then
+    echo
+    echo "   ※ 머지 완료된 브랜치에 ${PREFIX} finish 를 실행하지 마세요 — 이미 배포된 버전입니다."
+  fi
   exit 1
 }
 
