@@ -38,7 +38,7 @@ start() {
 }
 
 finish() {
-  local BRANCH VERSION LAST
+  local BRANCH VERSION LAST RESUMABLE
   BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
   # ── Phase 0: PREFLIGHT ──────────────────────────────────────────────
@@ -46,19 +46,31 @@ finish() {
   case "${BRANCH}" in
     release/*) ;;
     *)
-      echo "❌ release/* 브랜치에서 실행하세요 (현재: ${BRANCH})"
-      LAST="$(git for-each-ref --format='%(refname:short)' 'refs/heads/release/*' | tail -1)"
-      if [ -n "${LAST}" ]; then
-        echo "   → git switch ${LAST} 후 다시 실행하세요."
+      # 중단된 finish 는 HEAD 를 master/develop 에 두고 죽는다(Phase 2 가 그 둘을
+      # 체크아웃한다). 그 자리에서 재실행한 것이라면 이어받을 브랜치를 찾아 자동
+      # 전환한다 — 스크립트가 만든 상태일 때만이고, 사용자가 브랜치를 잘못 고른
+      # 경우는 그대로 막는다(find_resumable_topic 은 후보가 정확히 하나일 때만 답한다).
+      RESUMABLE="$(find_resumable_topic release)"
+      if [ -n "${RESUMABLE}" ]; then
+        require_clean_tree
+        echo "ℹ️  중단된 finish 를 발견했습니다 → ${RESUMABLE} 로 전환해 이어서 진행합니다."
+        git switch -q "${RESUMABLE}"
+        BRANCH="${RESUMABLE}"
+      else
+        echo "❌ release/* 브랜치에서 실행하세요 (현재: ${BRANCH})"
+        LAST="$(git for-each-ref --format='%(refname:short)' 'refs/heads/release/*' | tail -1)"
+        if [ -n "${LAST}" ]; then
+          echo "   → git switch ${LAST} 후 다시 실행하세요."
+        fi
+        exit 1
       fi
-      exit 1
       ;;
   esac
   VERSION="${BRANCH#release/}"
 
   echo "▶ [사전검사] 버전·워킹트리·동기화·머지 충돌"
   require_semver_version "${VERSION}"
-  require_clean_tree
+  require_clean_tree_or_own_artifacts "${VERSION}"
   # Phase 2 까지 끝나고 push 전에 죽은 재실행이면 master/develop 의 ahead 는 이 스크립트가
   # 만든 것이다 — 여기서 막으면 설계된 재실행 경로가 막힌다. 그 경우만 확인 후 통과시킨다.
   ALLOW_AHEAD_RESUME=0

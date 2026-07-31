@@ -65,6 +65,8 @@ git branch -m hotfix/FE-1234 fix/FE-1234
 | `origin 과 갈라졌습니다` | 로컬·원격이 diverged | `git pull --rebase` (맨 `git pull` 은 `pull.ff=only` 로 실패) |
 | `선행 라인입니다` | staging 라인 번호가 develop 보다 앞서 staging 명령이 잠김 | 안내된 `git push origin --delete staging/X.Y` |
 | `hotfix/* 브랜치에서 실행하세요` | 다른 브랜치에서 finish 를 실행함 | 안내된 `git switch hotfix/X.Y.0` |
+| `중단된 finish 를 발견했습니다` | 앞선 finish 가 강제 종료돼 이어받을 브랜치가 있음 | 자동으로 전환해 이어갑니다 — 그대로 두면 됩니다 |
+| `중단된 준비 단계의 산출물이 남아 있습니다` | 앞선 finish 가 bump·changelog 를 만들다 죽음 | 다시 생성해 이어갑니다 — stash 하지 않아도 됩니다 |
 
 ## 로컬 세팅
 

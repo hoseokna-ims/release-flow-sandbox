@@ -391,6 +391,22 @@ rollback_baseline() {
 - push 실패 롤백 후 bump 커밋은 브랜치에 남는다 → 재실행 시 Phase 1 이 skip 되어 멱등.
 - 고아 태그가 남지 않으므로 `next-version.mjs` 버전 건너뜀(0.49→0.50) 재발 불가.
 
+#### 6.1.1 강제 중단 복구 (FE-1040)
+
+위 롤백은 **스크립트가 살아 있을 때**만 돈다. `set -e` 의 ERR 트랩은 시그널에 걸리지 않으므로 Ctrl-C·터미널 종료·크래시에는 아무것도 복구되지 않는다. 실측하면 토픽 브랜치는 어느 지점에서 죽어도 살아남고 재실행으로 완주하지만, 사용자가 손으로 메워야 하는 틈이 둘 있었다.
+
+| 틈 | 원인 | 조치 |
+|---|---|---|
+| 재실행 전 `git switch` 한 번 | Phase 2 가 master·develop 을 체크아웃하므로 중단 직후 HEAD 가 토픽 브랜치에 없다 | `find_resumable_topic` 으로 이어받을 브랜치를 찾아 **자동 전환** |
+| Phase 1 중단 후 `git stash` 한 번 | bump·changelog 가 커밋 안 된 채 남아 `require_clean_tree` 에 걸린다 | 더러운 게 **자기 산출물뿐**이면 다시 생성해 이어감 |
+
+둘 다 "스크립트가 만든 상태"로 판정 범위를 좁혔다.
+
+- **자동 전환**은 `is_resumed_finish`(§5.1) 를 만족하는 후보가 **정확히 하나**일 때만 한다. 0개(사용자가 브랜치를 잘못 고름)나 2개 이상(모호)이면 추측하지 않고 기존 안내로 막는다. 전환 전 `require_clean_tree` 를 건다.
+- **산출물 판정**은 ① 더러운 경로가 `{package.json, package-lock.json, CHANGELOG.md}` 안에만 있고 ② `package.json` 의 version 이 이미 이번 릴리스 버전일 때만 성립한다(= 우리 bump 가 돌았다는 증거). 하나라도 어긋나면 사용자 변경일 수 있으므로 기존대로 차단한다. Phase 1 은 멱등이므로(bump 는 같은 값, `changelog.mjs` 는 같은 버전 섹션을 교체 — `changelog.mjs:147`) 그대로 덮어쓰면 된다.
+
+> 남은 divergence: 성공한 `release finish` 는 HEAD 를 develop 에 두고 끝난다(avh 는 master). Phase 2 끝에서 토픽 브랜치로 되돌리면 `topic_delete` 가 avh 와 같은 위치로 정리하지만, 눈에 보이는 동작 변화라 이번 범위에서는 손대지 않았다.
+
 ### 6.2 start — 검증 격차 해소
 
 | 변경 | 대상 | 근거(실측) |
@@ -432,6 +448,7 @@ rollback_baseline() {
 | develop behind/diverged finish (3-A-2/3) | master 머지·태그·**브랜치 삭제 후** push 실패 | Phase 0 무변경 중단 |
 | develop/master ahead | 조용히 통과, 미푸시 커밋 유출 | **차단** + 브랜치별 대응 안내 (§5.1) |
 | Phase 2 후 죽은 finish 재실행 (master·develop ahead) | — | `is_resumed_finish` 3조건 충족 시에만 확인 후 통과 |
+| 강제 중단(kill/Ctrl-C) 후 재실행 | 브랜치는 살지만 `git switch` + `git stash` 를 손으로 | 자동 이어받기 + 산출물 재생성 (§6.1.1) |
 | stale (팀원 push, fetch 안 함) | 마지막 push 에서 status:5 | Phase 0 fetch 로 사전 감지 |
 | push 실패 | 브랜치 삭제됨·고아 태그·수동 수습 | 완전 복원, 같은 명령 재실행 |
 | finish 재실행 | CHANGELOG 섹션 중복 | 멱등 (Phase 1 skip + changelog 교체) |
