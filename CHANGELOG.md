@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.28.0] - 2026-07-31
+
+### feature/FE-1040
+- feat: 강제 중단 후 재실행에서 손으로 메우던 두 단계 제거 ([0e2ae6e](https://github.com/hoseokna-ims/release-flow-sandbox/commit/0e2ae6e67cbbd10c258eed185422eeeef016681f))
+
+### feature/FE-1039
+- feat: ahead 를 확인 통과에서 차단으로 전환 ([de87c5c](https://github.com/hoseokna-ims/release-flow-sandbox/commit/de87c5cfeb95024e9f65e2fb3cde26c3831423d3))
+
 ## [0.27.0] - 2026-07-31
 
 ### feature/FE-1038
