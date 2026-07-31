@@ -52,15 +52,39 @@
    → <복사해 실행할 수 있는 다음 명령>
 ```
 
-**아키텍처 결정: git flow 위임 유지 (A안)**
+**아키텍처 결정: git flow 의존 제거 (B안)** — 2026-07-31 변경
 
-finish 의 머지·태그 실행은 `git flow ... finish -k` 에 계속 위임한다. 근거:
+> 최초 설계는 A안(`git flow ... finish -k` 위임 유지)이었다. 근거는 "팀이 쓰던 도구의 안정성·친숙함"
+> 이었으나, 아래 사실 확인으로 그 전제가 성립하지 않아 B안으로 전환한다.
 
-- 동기화 검사는 우리 preflight 가 직접 수행하므로 git flow 검사의 무력함은 무관해짐
-- `-k`(keep) 로 "push 전 브랜치 삭제" 문제 해결 — 삭제는 래퍼가 push 성공 후 수행
-- 머지 실패 롤백도 래퍼가 git flow 를 감싸서 구현 가능
-- 검증된 resume 로직(이미 된 머지·태그 skip) 재사용, 팀 친숙성 유지
-- **전제 조건**: avh 에디션에서 `-k` 와 실패 시 종료코드 동작 실측 확인 (§8). 예상 밖 동작이면 B안(직접 구현)으로 에스컬레이션
+| 구현 | 리포 상태 | 마지막 커밋 | Homebrew |
+|---|---|---|---|
+| `nvie/gitflow` (현재 이 리포가 쓰는 것) | **archived** | 2025-10-14 | deprecated(2025-12-19) → **2026-12-19 제거 예정** |
+| `petervanderdoes/gitflow-avh` (팀 다수가 쓰는 것) | **archived** | **2023-08-17** | **2026-03-05 formula 제거됨** |
+| `git-flow-next` (Go 재구현) | 유지보수 중 | — | 설치 가능 (1.1.0) |
+
+- `brew install git-flow-avh` 는 **이미 실패한다**(formula 없음). 신규 팀원 셋업이 이미 막혀 있다.
+- 두 구현 모두 아카이브라 avh 로 통일해도 유지보수되는 도구로 가는 것이 아니다.
+- 살아 있는 선택지는 `git-flow-next` 뿐인데, 세 번째 구현이라 어차피 재검증이 필요하다.
+- `git flow ... finish` 가 하는 일은 checkout·merge·tag·merge·delete 다섯 단계뿐이고,
+  동기화 검사는 이미 `scripts/lib/checks.sh` 가 직접 수행한다(§5).
+- 의존을 끊으면 **도구 수명 · 에디션 불일치(`Merge tag` vs `Merge branch`) · 설치 마찰**이 한 번에 사라진다.
+
+**구현 기준은 gitflow-avh 1.12.3** — 팀 다수가 avh 를 쓰므로 히스토리 모양을 avh 에 맞춘다.
+소스에서 확인한 동작(nvie 와 다른 점):
+
+| 단계 | avh 1.12.3 동작 |
+|---|---|
+| master 머지 | `git merge --no-ff <BRANCH>` (nvie 동일) |
+| 태그 | master 체크아웃 후 `git tag -a -m <msg> <VERSION>` (nvie 동일) |
+| **develop 되머지** | **태그를 머지**: `git merge --no-ff <TAG>` → `Merge tag 'X' into develop` |
+| 되머지 skip 조건 | **master 가 develop 에 머지됐는지** (nvie 는 BRANCH 기준) |
+| 삭제 전 checkout | release → master / hotfix → develop. 원격 먼저, 로컬 나중 |
+| 동기화 검사 | **실제로 동작한다** — `git_remote_branch_exists` 가 `git for-each-ref` 를 직접 써서 nvie 의 `has()` 인용 버그가 없다 |
+
+마지막 항목은 §1.2-2 의 정정이다: 동기화 검사 무력화는 **nvie 한정**이며 avh 에서는 동작한다.
+다만 `ahead` 는 avh 에서도 `warn only` 이므로(소스 주석: *there is no harm in being ahead*)
+미푸시 커밋이 릴리스에 섞이는 것은 어느 에디션도 막지 않는다 — 그래서 `checks.sh` 가 직접 확인한다.
 
 ---
 
@@ -72,12 +96,26 @@ finish 의 머지·태그 실행은 `git flow ... finish -k` 에 계속 위임�
 | 2 | `feature/FE-1030` | `merge-staging.sh` 원래 브랜치 복귀 + `deploy-staging.sh` 최신 라인 가드 (§4.2·4.3) | 🔴 | staging 2종 | 대기 |
 | 3 | `feature/FE-1031` | `new-staging.sh` 3겹 개선(안내·인자 검증·데드락 감지) (§4.4) | 🔴 | `scripts/new-staging.sh` | 대기 |
 | 4 | `feature/FE-1032` | pre-push·prod.yaml **태그 정합성 가드** (§4.5) | 🔴 | `.husky/pre-push`, `prod.yaml` | 대기 |
-| 5 | `feature/FE-1033` | 공통 검사 라이브러리 + **start 보강** (§5·6.2) | 🟠 | `scripts/lib/checks.sh`(신규), release/hotfix | 대기 |
-| 6 | `feature/FE-1034` | finish 재구성 (preflight→prepare→git flow `-k`→publish) + changelog 멱등화 (§6.1·6.3) | 🟠 | release/hotfix, `changelog.mjs` | 대기 (#5 의존) |
-| 7 | `feature/FE-1035` | 문구 통일·M3 빈 배포 확인·`CONTRIBUTING.md` 팀 규칙 (§6.4) | 🟡 | 다수 | 대기 |
+| 5 | `feature/FE-1033` | 공통 검사 라이브러리 + **start 보강** (§5·6.2) | 🟠 | `scripts/lib/checks.sh`(신규), release/hotfix | ✅ 구현·검증 완료 |
+| 6 | `feature/FE-1034` | **git flow 의존 제거** — 머지·태그·삭제를 avh 동등하게 직접 구현 (§6.1) | 🟠 | release/hotfix, `checks.sh`, `setup-versioning.sh`, README | 진행 중 (#5 의존) |
+| 7 | `feature/FE-1035` | **finish 재구성** — preflight 강화·롤백·push 후 삭제·changelog 멱등화 (§6.2·6.3) | 🟠 | release/hotfix, `changelog.mjs` | 대기 (#6 의존) |
+| 8 | `feature/FE-1036` | 문구 통일·M3 빈 배포 확인·`CONTRIBUTING.md` 팀 규칙 (§6.4) | 🟡 | 다수 | 대기 (#7 의존) |
 
-1~5 는 상호 독립이라 병렬 리뷰·머지 가능. 6 은 5 에 의존, 7 은 마무리.
+1~5 는 상호 독립이라 병렬 리뷰·머지 가능. 6→7→8 은 순차.
 각 PR 본문에 해당 probe 케이스 전후 비교 결과를 첨부한다(§8).
+
+### #6 과 #7 을 나눈 이유
+
+성격이 다르다. 섞으면 diff 에서 "대체된 것"과 "바뀐 것"이 구분되지 않고, 문제 발생 시 원인 격리가
+어려우며, postinstall 변경(팀 전체 셋업 영향)만 따로 되돌릴 수 없다.
+
+| | 목적 | 성격 | 검증 질문 |
+|---|---|---|---|
+| **#6** | 의존성 제거 | **동등 대체** — 동작은 그대로 | "git flow 없이 똑같이 동작하는가" |
+| **#7** | 실패 복구·재실행 안전 | **동작 변경** | "실패해도 복원되고 재실행되는가" |
+
+**#6 은 알려진 결함도 그대로 둔다** — push *전* 브랜치 삭제, 실패 시 더러운 트리 잔류.
+둘 다 #7 에서 고친다. 두 PR 사이 기간에 결함이 남지만 현재와 동일하므로 악화는 아니다.
 
 ---
 

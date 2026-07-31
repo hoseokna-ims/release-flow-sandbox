@@ -16,8 +16,7 @@ start() {
     *) echo "사용법: yarn hotfix start [minor|major]"; exit 1 ;;
   esac
 
-  echo "▶ [사전검사] 도구·워킹트리·잔재 브랜치"
-  require_gitflow
+  echo "▶ [사전검사] 워킹트리·잔재 브랜치"
   require_clean_tree
   require_no_stale_topic hotfix
 
@@ -35,7 +34,7 @@ start() {
   echo "▶ [사전검사] develop 되머지 충돌 시뮬 (package.json/lock 제외)"
   require_merge_clean develop master
 
-  git flow hotfix start "${NEXT}"
+  topic_start hotfix "${NEXT}" master
   echo "✅ hotfix/${NEXT} 시작. 수정·커밋 후 → yarn hotfix finish"
 }
 
@@ -57,8 +56,9 @@ finish() {
   [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
   git commit -qm "chore: hotfix ${VERSION}"
 
-  echo "▶ git flow hotfix finish (master·develop 머지 + 태그 ${VERSION})"
-  GIT_MERGE_AUTOEDIT=no git flow hotfix finish -m "${VERSION}" "${VERSION}"
+  echo "▶ master·develop 머지 + 태그 ${VERSION}"
+  require_topic_synced "${BRANCH}"
+  topic_finish hotfix "${VERSION}"
 
   echo "▶ push (master 푸시 = 운영 배포 트리거)"
   # --atomic: master/develop/태그 3개 ref 를 전부 성공 or 전부 실패로 push (부분 반영=스플릿 방지)
@@ -66,7 +66,7 @@ finish() {
     echo "❌ push 실패(원자적으로 아무것도 반영되지 않음). 원격이 앞서 있을 수 있습니다." >&2
     echo "   실제 원격 반영 상태:" >&2
     git ls-remote origin master develop "refs/tags/${VERSION}" >&2 || true
-    echo "   → git flow finish 는 이미 로컬에 반영됨(hotfix 브랜치 삭제). git fetch 후 원격 변경을" >&2
+    echo "   → 머지·태그는 이미 로컬에 반영됨(hotfix 브랜치 삭제). git fetch 후 원격 변경을" >&2
     echo "     master/develop 에 반영한 뒤 'git push --atomic origin master develop ${VERSION}' 를 수동 재실행하세요." >&2
     exit 1
   fi

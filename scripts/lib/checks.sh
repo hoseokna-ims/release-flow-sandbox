@@ -8,8 +8,9 @@
 # 설계 원칙
 #  - 모든 검사는 "첫 변경 전"에 끝낸다. 실패하면 아무것도 건드리지 않고 종료한다.
 #  - 모든 실패 메시지는 "무엇이 왜 안 되는지 한 줄" + "복사해 실행할 다음 명령"을 포함한다.
-#  - git flow 의 원격 동기화 검사(require_branches_equal)는 has() 헬퍼의 인용 문제로
-#    실제로 실행되지 않는다(nvie 0.4.1 실측). 그래서 동기화는 여기서 직접 확인한다.
+#  - 외부 릴리스 도구(git flow)에 의존하지 않는다. 사전검사뿐 아니라 머지·태그·브랜치
+#    정리까지 이 라이브러리가 직접 수행한다(topic_start / topic_finish).
+#    동작 기준은 gitflow-avh 1.12.3 — 팀 다수가 쓰던 에디션이라 히스토리 모양을 맞춘다.
 #
 # 이 파일의 함수는 실패 시 exit 1 한다(source 된 호출 스크립트가 종료된다).
 #
@@ -37,12 +38,22 @@ confirm() {
   exit 1
 }
 
-require_gitflow() {
-  command -v git-flow >/dev/null 2>&1 && return 0
-  echo "❌ git-flow 가 설치되어 있지 않습니다."
-  echo "   → brew install git-flow-avh"
-  echo "     설치 후 다음 yarn install 에서 git flow init 이 자동 실행됩니다."
-  exit 1
+# <ref> 가 <branch> 에 이미 머지됐는가 (avh git_is_branch_merged_into 동등)
+is_merged_into() {
+  [ "$(git merge-base "$1^{}" "$2^{}")" = "$(git rev-parse "$1^{}")" ]
+}
+
+# 두 ref 관계 (avh git_compare_refs 동등)
+#   0=동일  1=$1 이 $2 의 조상(behind)  2=$2 가 $1 의 조상(ahead)  3=diverged  4=공통조상 없음
+compare_refs() {
+  local C1 C2 BASE
+  C1="$(git rev-parse "$1^{}")"; C2="$(git rev-parse "$2^{}")"
+  [ "${C1}" = "${C2}" ] && return 0
+  BASE="$(git merge-base "${C1}" "${C2}" 2>/dev/null)" || return 4
+  [ -z "${BASE}" ] && return 4
+  [ "${C1}" = "${BASE}" ] && return 1
+  [ "${C2}" = "${BASE}" ] && return 2
+  return 3
 }
 
 require_clean_tree() {
@@ -126,8 +137,9 @@ require_merge_clean() {
 }
 
 # 남아 있는 release/* 또는 hotfix/* 로컬 브랜치를 먼저 진단한다.
-# git flow 의 "Finish that one first" 는 브랜치명이 뭉개져 보이고, 작업 브랜치를
-# finish 하라는 뜻으로 읽혀 위험하다(작업 브랜치가 master 에 머지되고 태그까지 붙는다).
+# 릴리스는 한 번에 하나만 진행한다(avh 의 require_no_existing_*_branches 와 동등).
+# 접두사를 작업 브랜치에 오용한 경우가 특히 위험하다 — 그대로 finish 하면 그 브랜치가
+# master 에 머지되고 태그까지 붙는다.
 require_no_stale_topic() {
   local PREFIX="$1" FOUND NON_SEMVER B
   FOUND="$(git for-each-ref --format='%(refname:short)' "refs/heads/${PREFIX}/*" || true)"
@@ -135,7 +147,7 @@ require_no_stale_topic() {
 
   echo "❌ 로컬에 ${PREFIX}/* 브랜치가 이미 있습니다:"
   printf '%s\n' "${FOUND}" | sed 's/^/     - /'
-  echo "   git flow 는 ${PREFIX}/* 가 하나라도 있으면 새 ${PREFIX} 를 시작할 수 없습니다."
+  echo "   ${PREFIX} 는 한 번에 하나만 진행할 수 있습니다."
 
   NON_SEMVER="$(printf '%s\n' "${FOUND}" | grep -vE "^${PREFIX}/[0-9]+\.[0-9]+\.[0-9]+$" || true)"
   if [ -n "${NON_SEMVER}" ]; then
@@ -151,4 +163,75 @@ require_no_stale_topic() {
   echo
   echo "   진행 중인 릴리스라면 먼저 마무리하세요: yarn ${PREFIX} finish"
   exit 1
+}
+
+# topic 브랜치가 origin 에 있으면 원격이 앞서지 않는지 확인.
+# (avh 는 finish 에서 항상 topic 브랜치를 fetch 하고 require_branches_equal 한다 —
+#  staging:merge 로 topic 브랜치를 push 해 두는 흐름이 있어 실제로 의미가 있다)
+require_topic_synced() {
+  local BRANCH="$1" BEHIND AHEAD
+  git rev-parse --verify --quiet "refs/remotes/origin/${BRANCH}" >/dev/null || return 0
+  git fetch -q origin "${BRANCH}" 2>/dev/null || true
+  read -r BEHIND AHEAD < <(git rev-list --left-right --count "origin/${BRANCH}...${BRANCH}" 2>/dev/null || echo "0 0")
+  if [ "${BEHIND}" -gt 0 ]; then
+    echo "❌ ${BRANCH} 가 origin 보다 ${BEHIND} 커밋 뒤처졌습니다 — 원격 커밋이 릴리스에서 누락됩니다."
+    if [ "${AHEAD}" -gt 0 ]; then
+      echo "   → git switch ${BRANCH} && git pull --rebase 후 재실행하세요. (갈라짐: ahead ${AHEAD})"
+    else
+      echo "   → git switch ${BRANCH} && git pull 후 재실행하세요."
+    fi
+    exit 1
+  fi
+}
+
+# ── git flow 대체 구현 ────────────────────────────────────────────────
+# gitflow-avh 1.12.3 의 `git flow {release,hotfix} start|finish` 와 동등하게 동작한다.
+# git-flow 는 nvie·avh 모두 upstream 아카이브 상태이고 avh 는 Homebrew 에서 제거돼
+# 신규 설치가 불가능하다(설계문서 §2). 하는 일이 checkout·merge·tag·merge·delete
+# 다섯 단계뿐이라 직접 구현해 도구 의존을 끊는다.
+
+topic_start() {
+  local PREFIX="$1" VERSION="$2" BASE="$3" BRANCH="$1/$2"
+  if git rev-parse --verify --quiet "refs/heads/${BRANCH}" >/dev/null; then
+    echo "❌ 브랜치가 이미 존재합니다: ${BRANCH}"
+    exit 1
+  fi
+  git switch -q -c "${BRANCH}" "${BASE}"
+}
+
+# 1) master 머지 → 2) 태그 → 3) develop 에 '태그' 되머지 → 4) 브랜치 삭제
+# 각 단계는 이미 완료됐으면 건너뛴다 (중단 후 재실행 대비 — avh 와 동일).
+topic_finish() {
+  local PREFIX="$1" VERSION="$2" BRANCH="$1/$2" AFTER_DELETE
+  # 삭제 직전 돌아갈 브랜치: release→master, hotfix→develop (avh 동작)
+  case "${PREFIX}" in
+    release) AFTER_DELETE=master ;;
+    *)       AFTER_DELETE=develop ;;
+  esac
+
+  if ! is_merged_into "${BRANCH}" master; then
+    git checkout -q master
+    GIT_MERGE_AUTOEDIT=no git merge --no-ff "${BRANCH}" || return 1
+  fi
+
+  if ! git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+    git checkout -q master
+    git tag -a -m "${VERSION}" "${VERSION}" || return 1
+  fi
+
+  # 브랜치가 아니라 '태그' 를 머지한다 — avh 기본 동작(`git describe` 정합성).
+  # 히스토리에 "Merge tag 'X' into develop" 으로 남는다. skip 판정도 master 기준(avh 동일).
+  if ! is_merged_into master develop; then
+    git checkout -q develop
+    GIT_MERGE_AUTOEDIT=no git merge --no-ff "${VERSION}" || return 1
+  fi
+
+  # 원격 먼저, 로컬 나중 (avh 순서 — 로컬을 먼저 지우면 경고가 난다)
+  if [ "$(git rev-parse --abbrev-ref HEAD)" = "${BRANCH}" ]; then
+    git checkout -q "${AFTER_DELETE}"
+  fi
+  if git rev-parse --verify --quiet "refs/remotes/origin/${BRANCH}" >/dev/null; then
+    git push -q origin ":refs/heads/${BRANCH}" 2>/dev/null || true
+  fi
+  git branch -q -d "${BRANCH}" || return 1
 }
