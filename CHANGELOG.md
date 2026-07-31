@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.27.0] - 2026-07-31
+
+### feature/FE-1038
+- docs: 설계문서 작업 목록을 최종 완료 상태로 갱신 ([82e7332](https://github.com/hoseokna-ims/release-flow-sandbox/commit/82e7332070630cc7280d24db696be5031caa5916))
+
+### feature/FE-1037
+- fix: 잔재 topic 브랜치를 성격별로 판정해 맞는 명령을 안내 ([009e470](https://github.com/hoseokna-ims/release-flow-sandbox/commit/009e4705aaf6d6d15d84a07f760dc98a350c4dc7))
+
+### feature/FE-1036
+- docs: staging 안내 보강 + 빈 배포 확인 + 기여 가이드 갱신 ([79942bb](https://github.com/hoseokna-ims/release-flow-sandbox/commit/79942bb92dc92162619c10c7ee26d1f7ca5289e4))
+
+### feature/FE-1035
+- feat: finish 4단계 재구성 — 사전검증·자동 롤백·push 후 브랜치 삭제 ([79c3370](https://github.com/hoseokna-ims/release-flow-sandbox/commit/79c337016b3fbfff10289a6ba11656871754d2c6))
+
+### feature/FE-1034
+- refactor: git flow 의존 제거 — 머지·태그를 avh 동등하게 직접 구현 ([1826570](https://github.com/hoseokna-ims/release-flow-sandbox/commit/1826570f15dd840ed7ea7e66b09c2fc58c5caf6b))
+
+### feature/FE-1029
+- docs: '오펀 라인' 용어를 '선행 라인' 으로 변경 ([0682d32](https://github.com/hoseokna-ims/release-flow-sandbox/commit/0682d320aa09167530eb9038ecc64266e571ac08))
+- docs: 릴리스 플로우 안정화 설계 문서 추가 ([f62269c](https://github.com/hoseokna-ims/release-flow-sandbox/commit/f62269cb3074df048ffb8bb4f248d246cb531c2e))
+- feat: push-tag 배포 태그 컨텍스트 가드 + force-push 전환 ([0f7fa6f](https://github.com/hoseokna-ims/release-flow-sandbox/commit/0f7fa6fc4fa816733bbd1bc161490bbee145238a))
+
+### feature/FE-1030
+- docs: '오펀 라인' 용어를 '선행 라인' 으로 변경 (주석) ([a417b38](https://github.com/hoseokna-ims/release-flow-sandbox/commit/a417b38bfa2e6f95d47d9f0c3b334d9e31392ff9))
+- fix: staging 배포 경로 가드 2건 (브랜치 복귀 + 최신 라인 검사) ([d61b91b](https://github.com/hoseokna-ims/release-flow-sandbox/commit/d61b91b005617281b074ddf7484e3f0a1b4c5a2d))
+
+### feature/FE-1031
+- docs: '오펀 라인' 용어를 '선행 라인' 으로 변경 ([70f0602](https://github.com/hoseokna-ims/release-flow-sandbox/commit/70f060281a80b423d4c2724ef1beac6f36f95089))
+- fix: staging:new 인자 검증·오펀 라인 차단·막다른 메시지 개선 ([097bcdd](https://github.com/hoseokna-ims/release-flow-sandbox/commit/097bcddb1a3b9cee72bd924563906216b2307518))
+
+### feature/FE-1033
+- feat: 공통 사전검사 라이브러리 + release/hotfix start 보강 ([4bc50a6](https://github.com/hoseokna-ims/release-flow-sandbox/commit/4bc50a6de21f6f6bed167158318ae6e90f50171e))
+
+### feature/FE-1032
+- feat: 태그 정합성 가드 (pre-push + prod.yaml) ([e978ed6](https://github.com/hoseokna-ims/release-flow-sandbox/commit/e978ed6e41a0db06b5956db7aaefaeea694369ab))
+
 ## [0.26.0] - 2026-07-27
 
 ### feature/FE-1028
