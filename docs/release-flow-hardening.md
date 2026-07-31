@@ -246,7 +246,7 @@ fi
 `scripts/lib/checks.sh` (신규). start 와 finish 가 공유한다.
 
 ```bash
-# require_synced <branch>...  : fetch 후 behind/diverged 차단, ahead 는 목록 표시 + 명시적 확인
+# require_synced <branch>...  : fetch 후 behind/diverged/ahead 차단 (ahead 예외는 아래 5.1)
 require_synced() {
   git fetch origin --prune
   for BR in "$@"; do
@@ -259,10 +259,15 @@ require_synced() {
       echo "❌ ${BR} 가 origin 보다 ${behind} 커밋 뒤처짐."
       echo "   → git switch ${BR} && git pull 후 재실행"
       exit 1
-    elif [ "$ahead" -gt 0 ]; then
-      echo "⚠️  ${BR} 에 push 안 된 로컬 커밋 ${ahead}개 — 이번 릴리스에 함께 나갑니다:"
+    elif [ "$ahead" -gt 0 ] && [ "$ALLOW_AHEAD_RESUME" = "1" ]; then
+      echo "⚠️  ${BR} 에 push 안 된 로컬 커밋 ${ahead}개 — 중단된 finish 의 재실행으로 보입니다:"
       git log --oneline "origin/${BR}..${BR}" | sed 's/^/     /'
-      confirm "   포함하고 계속할까요?"
+      confirm "   이어서 마무리할까요?"
+    elif [ "$ahead" -gt 0 ]; then
+      echo "❌ ${BR} 에 push 안 된 로컬 커밋 ${ahead}개 — 리뷰·CI 를 거치지 않은 채 이번 릴리스에 실려 나갑니다:"
+      git log --oneline "origin/${BR}..${BR}" | sed 's/^/     /'
+      # master 는 'push 하세요' 로 안내하면 안 된다 — master push = 운영 배포
+      exit 1
     fi
   done
 }
@@ -284,8 +289,26 @@ confirm() {
 ```
 
 **설계 노트**
-- `ahead` 확인은 git-flow 계열 어디에도 없는 검사 — 이 리포에서는 미푸시 master 커밋이 곧 운영 배포이므로 반드시 래퍼가 수행.
+- `ahead` 검사는 git-flow 계열 어디에도 없다 — 이 리포에서는 미푸시 master 커밋이 곧 운영 배포이므로 반드시 래퍼가 수행.
 - 비대화형 환경에서 `confirm` 은 **차단**이 기본값(안전 우선). CI 에서 의도적으로 진행하려면 환경변수(`RELEASE_ASSUME_YES=1`) opt-in.
+
+### 5.1 ahead 정책 — 확인이 아니라 차단 (FE-1039)
+
+초기 설계는 ahead 를 "커밋 목록 + y/N 확인"으로 통과시켰다. 이를 **차단**으로 바꾼다.
+
+- 미푸시 커밋은 리뷰·CI 를 거치지 않은 채 릴리스에 실려 나가고, master 의 미푸시 커밋은 그대로 운영 배포다.
+- **`.husky/pre-push` 태그 정합성 가드(§4)는 이 경로를 잡지 못한다.** 그 가드는 "푸시되는 master tip 의 `package.json` version == 그 커밋을 가리키는 태그"만 본다. 우회로 만든 커밋 **위에** 정상 릴리스를 얹으면 새 태그가 새 master tip 을 정확히 가리켜 통과하고, 아래에 깔린 우회 커밋은 그대로 운영에 나간다. 즉 확인 프롬프트의 `y` 가 사실상 마지막 관문이었다 — 하필 그게 눌리는 시점은 야간 핫픽스 도중이다.
+- 안내 문구는 브랜치 성격에 따라 다르다. **develop** 은 `git push` 로 먼저 올리면 끝이지만, **master** 는 `push` 자체가 운영 배포이므로 진단으로 유도한다(진행 중인 릴리스가 있으면 finish, 잔재면 `git reset --hard origin/master`).
+
+**유일한 예외 — 중단된 finish 의 재실행.** Phase 2(머지·태그)까지 끝나고 push 전에 프로세스가 죽으면 master·develop 이 ahead 로 남는데, 이 ahead 는 스크립트 자신이 만든 것이다. 여기서 막으면 설계된 재실행 경로(§6.1)가 죽고 사용자는 수동 git 말고 할 수 있는 게 없어진다. `is_resumed_finish` 가 **세 조건을 모두** 만족할 때만 예외로 두고, 그때도 목록 + 확인을 거친다.
+
+| 조건 | 배제하는 오인 |
+|---|---|
+| 토픽 브랜치 tip 이 이 버전의 `chore: {release,hotfix} <ver>` bump 커밋 | 수동 `git flow finish` 는 bump 를 만들지 않는다 |
+| 그 브랜치가 이미 master 에 머지됨 | Phase 2 를 지나지 않은 상태 |
+| 태그가 없거나 master tip 을 가리킴 | 태그가 다른 커밋 = bump 없는 재배포(사고 본체) |
+
+사고(2026-07-29) 형태 — bump 없이 수동 `git flow hotfix finish` 로 머지·태그만 만들어진 상태 — 는 1·3 에서 걸러져 재실행으로 오인되지 않는다.
 - 안내 문구 원칙: behind 는 `git pull`(pull.ff=only 로 FF 성공), diverged 는 `git pull --rebase`. `--no-rebase` 도 동작함을 실측 확인했으나 rebase 를 표준으로 안내(불필요한 머지 커밋 방지).
 
 ---
@@ -372,7 +395,7 @@ rollback_baseline() {
 
 | 변경 | 대상 | 근거(실측) |
 |---|---|---|
-| `require_synced master develop` 적용 (ahead 확인 포함) | release·hotfix 공통 | hotfix start 는 develop 미검사, 둘 다 ahead 를 `_` 로 버림 |
+| `require_synced master develop` 적용 (ahead 차단 포함) | release·hotfix 공통 | hotfix start 는 develop 미검사, 둘 다 ahead 를 `_` 로 버림 |
 | `require_merge_clean develop HEAD`(hotfix: 되머지 방향) 추가 | hotfix | release 만 merge-tree 시뮬 보유 |
 | `require_gitflow` 를 fetch 전에 | 공통 | 미설치 시 검사 다 통과 후 의미불명 출력으로 사망 |
 | 잔재 topic 브랜치 선검사 | 공통 | git flow 의 "Finish that one first" 는 뭉개진 브랜치명 + 위험한 유도(작업 브랜치를 finish 하라고 읽힘) |
@@ -407,7 +430,8 @@ rollback_baseline() {
 | 비-semver 브랜치 finish (2-A-1~3) | bump 도중 실패 | Phase 0 무변경 중단 |
 | GPG·훅·lock 커밋 실패 (2-D) | 더러운 트리 잔류 → 재실행 튕김 | Phase 1 자동 복원 → 재실행 OK |
 | develop behind/diverged finish (3-A-2/3) | master 머지·태그·**브랜치 삭제 후** push 실패 | Phase 0 무변경 중단 |
-| develop/master ahead | 조용히 통과, 미푸시 커밋 유출 | 커밋 목록 + 명시적 확인 |
+| develop/master ahead | 조용히 통과, 미푸시 커밋 유출 | **차단** + 브랜치별 대응 안내 (§5.1) |
+| Phase 2 후 죽은 finish 재실행 (master·develop ahead) | — | `is_resumed_finish` 3조건 충족 시에만 확인 후 통과 |
 | stale (팀원 push, fetch 안 함) | 마지막 push 에서 status:5 | Phase 0 fetch 로 사전 감지 |
 | push 실패 | 브랜치 삭제됨·고아 태그·수동 수습 | 완전 복원, 같은 명령 재실행 |
 | finish 재실행 | CHANGELOG 섹션 중복 | 멱등 (Phase 1 skip + changelog 교체) |
