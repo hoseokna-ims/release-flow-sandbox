@@ -4,7 +4,8 @@
 
 ## 배포 명령어
 
-git-flow 기반으로 스테이징/운영 배포를 자동화합니다. 버전은 `package.json` 단일 소스이며 **patch 값**으로 채널을 구분합니다.
+git-flow 브랜칭 모델로 스테이징/운영 배포를 자동화합니다. 버전은 `package.json` 단일 소스이며 **patch 값**으로 채널을 구분합니다.
+스크립트가 머지·태그를 직접 수행하므로 **`git-flow` 설치는 필요하지 않습니다.**
 
 - `patch != 0` → **스테이징** (예: `0.18.1`, `0.18.2` …)
 - `patch == 0` → **운영** (예: `0.18.0`, `1.0.0`)
@@ -56,8 +57,11 @@ yarn hotfix finish
 > — 이 단계는 best-effort 라 실패해도 릴리스는 그대로 완료되며, carry-over 머지 충돌 시엔
 > origin 에 빈 라인만 만들고 `yarn staging:merge` 로 수동 마무리하도록 안내합니다.
 
-> 최초 클론 시 `yarn install`(postinstall)이 버전 병합 드라이버·ff 정책·git-flow init 을 자동 등록합니다.
-> git-flow 는 avh 에디션을 권장합니다: `brew install git-flow-avh`
+> 최초 클론 시 `yarn install`(postinstall)이 버전 병합 드라이버·ff 정책을 자동 등록합니다. 별도 도구 설치는 없습니다.
+>
+> 예전에는 `git-flow`(avh) 설치가 필요했지만, nvie·avh 모두 upstream 이 아카이브되고
+> avh 는 Homebrew 에서 제거돼(2026-03-05) 신규 설치가 불가능해졌습니다. 지금은 릴리스
+> 스크립트가 머지·태그·브랜치 정리를 직접 수행합니다(히스토리 모양은 avh 와 동일).
 
 ## Getting Started
 
