@@ -87,10 +87,32 @@ require_tag_absent() {
   fi
 }
 
+# 중단된 finish 의 재실행 상태인가 — Phase 2(머지·태그)까지 끝나고 push 전에 죽은 경우.
+# 이 상태에서만 master/develop 의 ahead 가 '스크립트 자신이 만든 것' 이다.
+#
+# 세 조건을 모두 요구한다. 사고(2026-07-29) 형태 — bump 없이 수동 `git flow finish` 를
+# 호출해 master 에 머지·태그만 만들어진 상태 — 를 재실행으로 오인하지 않기 위해서다.
+#   1) 토픽 브랜치 tip 이 이 버전의 bump 커밋   (수동 git flow 에는 없다)
+#   2) 그 브랜치가 이미 master 에 머지됨        (Phase 2 를 지났다)
+#   3) 태그가 없거나 master tip 을 가리킴        (다른 커밋을 가리키면 bump 없는 재배포다)
+is_resumed_finish() {
+  local PREFIX="$1" VERSION="$2" BRANCH="$1/$2" TAG_SHA
+  git log -1 --format=%s "${BRANCH}" 2>/dev/null | grep -qF "chore: ${PREFIX} ${VERSION}" || return 1
+  is_merged_into "${BRANCH}" master || return 1
+  TAG_SHA="$(git rev-parse -q --verify "refs/tags/${VERSION}^{commit}" 2>/dev/null || true)"
+  [ -z "${TAG_SHA}" ] || [ "${TAG_SHA}" = "$(git rev-parse master)" ] || return 1
+  return 0
+}
+
 # 로컬 브랜치가 origin 과 동기화됐는지 확인.
 #  - behind / diverged → 차단 (안내는 pull.ff=only 설정을 반영해 구분한다)
-#  - ahead            → 커밋 목록을 보여주고 명시적 확인 (git-flow 계열은 ahead 를 '무해'로
-#                       보지만, 이 리포에서는 미푸시 master 커밋이 곧 운영 배포다)
+#  - ahead            → 차단. 미푸시 커밋은 리뷰·CI 를 거치지 않은 채 이번 릴리스에 실려
+#                       나가고, master 의 미푸시 커밋은 그대로 운영 배포다. git-flow 계열은
+#                       ahead 를 '무해'로 보지만 이 리포에서는 유해하다(설계문서 §5).
+#                       ※ pre-push 태그 정합성 가드는 이걸 잡지 못한다 — 우회로 만든 커밋
+#                         위에 정상 릴리스를 얹으면 태그가 새 master tip 을 가리켜 통과한다.
+#  - 예외             → 중단된 finish 의 재실행(ALLOW_AHEAD_RESUME=1)일 때만 목록 + 확인.
+ALLOW_AHEAD_RESUME="${ALLOW_AHEAD_RESUME:-0}"
 require_synced() {
   git fetch origin --prune
   local BR BEHIND AHEAD
@@ -110,10 +132,25 @@ require_synced() {
       echo "❌ ${BR} 가 origin 보다 ${BEHIND} 커밋 뒤처졌습니다."
       echo "   → git switch ${BR} && git pull"
       exit 1
-    elif [ "${AHEAD}" -gt 0 ]; then
-      echo "⚠️  ${BR} 에 push 안 된 로컬 커밋 ${AHEAD}개가 있습니다 — 이번 릴리스에 함께 나갑니다:"
+    elif [ "${AHEAD}" -gt 0 ] && [ "${ALLOW_AHEAD_RESUME}" = "1" ]; then
+      echo "⚠️  ${BR} 에 push 안 된 로컬 커밋 ${AHEAD}개 — 중단된 finish 의 재실행으로 보입니다:"
       git log --oneline "origin/${BR}..${BR}" | sed 's/^/     /'
-      confirm "   포함하고 계속할까요?"
+      confirm "   이어서 마무리할까요?"
+    elif [ "${AHEAD}" -gt 0 ]; then
+      echo "❌ ${BR} 에 push 안 된 로컬 커밋 ${AHEAD}개가 있습니다 — 리뷰·CI 를 거치지 않은 채 이번 릴리스에 실려 나갑니다:"
+      git log --oneline "origin/${BR}..${BR}" | sed 's/^/     /'
+      if [ "${BR}" = "master" ]; then
+        # master 는 finish 의 Phase 2→3 사이에서만 잠깐 ahead 다. 그 외의 ahead 는
+        # 래퍼 밖에서 master 를 건드렸다는 뜻이므로 'push 하세요' 로 안내하면 안 된다
+        # (master push = 운영 배포).
+        echo "   master 는 릴리스 스크립트 밖에서 커밋·머지하지 않습니다 — 우회 조작의 흔적입니다."
+        echo "   → 진행 중인 릴리스가 남아 있으면: git switch release/<버전> (또는 hotfix/<버전>) 후 finish"
+        echo "   → 위 커밋이 불필요한 잔재임을 확인했으면: git reset --hard origin/master"
+        echo "     (master 를 직접 push 하지 마세요 — 그 자체가 운영 배포입니다)"
+      else
+        echo "   → 릴리스에 묻어 나가지 않도록 먼저 올리세요: git switch ${BR} && git push"
+      fi
+      exit 1
     fi
   done
 }

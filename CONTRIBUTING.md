@@ -59,7 +59,9 @@ git branch -m hotfix/FE-1234 fix/FE-1234
 
 | 메시지 | 뜻 | 대응 |
 |---|---|---|
-| `push 안 된 로컬 커밋 N개` | develop/master 에 미푸시 커밋이 있어 이번 릴리스에 함께 나감 | 목록을 확인하고 의도한 것이면 `y` |
+| `push 안 된 로컬 커밋 N개` (develop) | develop 의 미푸시 커밋이 리뷰·CI 없이 릴리스에 실려 나감 | `git switch develop && git push` 로 먼저 올리고 재실행 |
+| `push 안 된 로컬 커밋 N개` (master) | 릴리스 스크립트 밖에서 master 를 건드린 흔적 (미푸시 master 커밋 = 운영 배포) | 진행 중인 릴리스가 있으면 그 브랜치에서 `finish`, 잔재로 확인되면 `git reset --hard origin/master`. **master 를 직접 push 하지 말 것** |
+| `중단된 finish 의 재실행으로 보입니다` | 머지·태그까지 끝나고 push 전에 죽은 상태 | 목록을 확인하고 맞으면 `y` — 이어서 마무리됩니다 |
 | `origin 과 갈라졌습니다` | 로컬·원격이 diverged | `git pull --rebase` (맨 `git pull` 은 `pull.ff=only` 로 실패) |
 | `선행 라인입니다` | staging 라인 번호가 develop 보다 앞서 staging 명령이 잠김 | 안내된 `git push origin --delete staging/X.Y` |
 | `hotfix/* 브랜치에서 실행하세요` | 다른 브랜치에서 finish 를 실행함 | 안내된 `git switch hotfix/X.Y.0` |

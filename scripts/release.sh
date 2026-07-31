@@ -59,6 +59,10 @@ finish() {
   echo "▶ [사전검사] 버전·워킹트리·동기화·머지 충돌"
   require_semver_version "${VERSION}"
   require_clean_tree
+  # Phase 2 까지 끝나고 push 전에 죽은 재실행이면 master/develop 의 ahead 는 이 스크립트가
+  # 만든 것이다 — 여기서 막으면 설계된 재실행 경로가 막힌다. 그 경우만 확인 후 통과시킨다.
+  ALLOW_AHEAD_RESUME=0
+  if is_resumed_finish release "${VERSION}"; then ALLOW_AHEAD_RESUME=1; fi
   require_synced master develop
   require_topic_synced "${BRANCH}"
   require_merge_clean master  "${BRANCH}"
