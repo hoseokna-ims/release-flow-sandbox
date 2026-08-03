@@ -12,6 +12,7 @@
     "staging:new": "bash scripts/new-staging.sh",
     "staging:merge": "bash scripts/merge-staging.sh",
     "staging:deploy": "bash scripts/deploy-staging.sh",
+    "test:release-flow": "bash scripts/test/run-all.sh",
     "postinstall": "husky && bash scripts/setup-versioning.sh || true"
   },
   "dependencies": {
