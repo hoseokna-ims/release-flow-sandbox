@@ -32,8 +32,12 @@ SRC=/path/to/imsform-mobile-web yarn test:release-flow
 | `ahead-policy.sh` | 33 | behind/diverged/ahead 차단 · 차단 시 무변경 · 우회 상태 오인 방지 · 재실행 예외 · 정상 플로우 회귀 |
 | `interrupt.sh` | 34 | 단계 경계 4곳에서 `kill -9` · push 실패 레이스 · 롤백 후 재실행 |
 | `dx.sh` | 26 | 자동 이어받기 · Phase 1 산출물 재생성 · 오작동 방지 4종 |
+| `guards.sh` | 8 | pre-push 태그 동반 검사 · 이식성(bash 전용 스크립트를 `sh` 로 호출 금지, `dash -n`) |
 | `lib/harness.sh` | — | 픽스처·git 셔임·단언 헬퍼 |
 | `run-all.sh` | — | 전체 실행 + 합계 |
+
+`guards.sh` G5 는 `dash` 가 설치돼 있을 때만 돕니다(없으면 건너뛰고 합계가 1 줄어듭니다).
+macOS 는 `/bin/sh` 가 bash 라 POSIX 위반이 로컬에서 드러나지 않으므로, `brew install dash` 를 권합니다.
 
 ## 중단·레이스를 재현하는 방법
 

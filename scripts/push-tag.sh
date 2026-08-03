@@ -4,15 +4,15 @@
 # 🐳 Git Tag 배포 스크립트 for staging & prod 환경
 #
 # 사용법:
-# sh scripts/push-tag.sh ENV
+# bash scripts/push-tag.sh ENV
 #
 # ENV:
 #   staging     스테이징 서버 배포 트리거 (staging/* 브랜치에서만)
 #   prod        프로덕션 서버 배포 트리거 (origin/master 최신 커밋에서만)
 #
 # 예시:
-# sh scripts/push-tag.sh staging
-# sh scripts/push-tag.sh prod
+# bash scripts/push-tag.sh staging
+# bash scripts/push-tag.sh prod
 #######################################################################
 
 set -euo pipefail
