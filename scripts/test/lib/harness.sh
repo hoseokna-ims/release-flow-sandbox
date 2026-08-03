@@ -112,6 +112,17 @@ _install_pre_push() {
   chmod +x .husky/pre-push
 }
 
+# Phase 2(머지·태그)까지 끝나고 push 전에 죽은 상태를, 실제 함수를 호출해 재현한다.
+# 전제: fixture <이름> release 로 release/<버전> 브랜치에 있어야 한다.
+phase2_state() {
+  local V="${1:-0.2.0}"
+  node scripts/bump-version.mjs "${V}" >/dev/null
+  node scripts/changelog.mjs "${V}" >/dev/null
+  git add -A >/dev/null; git commit -qm "chore: release ${V}"
+  bash -c "source scripts/lib/checks.sh; topic_merge_and_tag release ${V}" >/dev/null 2>&1
+  git switch -q "release/${V}"
+}
+
 # ── 실행·단언 ─────────────────────────────────────────────────────────
 run()      { OUT="$(eval "$1" 2>&1)"; ST=$?; }
 case_hdr() { printf '\n── %s ──\n' "$1"; }

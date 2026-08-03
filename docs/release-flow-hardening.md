@@ -239,6 +239,27 @@ fi
 `prod.yaml` Version guard 스텝에 동일 검사 추가(CI 이중화, `fetch-depth: 0` + `fetch-tags: true` 필요).
 `yarn release/hotfix finish` 는 `--atomic` 으로 master 와 태그를 함께 밀므로... **주의**: pre-push 시점에 태그는 로컬에 존재하고 `local_sha` 와 비교하므로 통과. CI 는 push 완료 후이므로 태그도 도착해 있어 통과. 우회 경로(수동 push, git flow 후 태그 누락 push)만 정확히 차단된다.
 
+#### 4.5.1 태그 동반 검사 (FE-1042)
+
+위 검사는 **로컬 태그만** 본다. 그래서 로컬에 태그를 만들어 둔 뒤 `git push origin master` 만 실행하면 통과한다 — 원격엔 태그가 없으니 prod.yaml 의 Tag guard 가 배포를 막고, **master 만 올라간 '반쯤 릴리스' 상태**로 남는다(재현: `scripts/test/guards.sh` G1).
+
+그래서 조건을 하나 더 요구한다: **그 태그가 이번 push 에 함께 올라갈 것.**
+
+```sh
+REFS=$(cat)      # stdin 은 한 번만 읽힌다 → 먼저 버퍼링
+                 # (파이프로 while 을 돌리면 서브셸이라 exit 1 이 훅을 종료시키지 못한다.
+                 #  아래 루프는 here-doc 으로 현재 셸에서 돈다)
+
+tag_in_push() { printf '%s\n' "$REFS" | awk -v t="refs/tags/$1" '$3 == t {found=1} END {exit found?0:1}'; }
+
+# 이미 원격에 같은 커밋으로 올라가 있으면(태그를 따로 먼저 민 경우) 통과시킨다
+if ! tag_in_push "$VERSION" && [ "$(remote_tag_commit "$VERSION")" != "$local_sha" ]; then
+  … 차단
+fi
+```
+
+훅은 `#!/usr/bin/env sh` 이므로 추가 코드도 **POSIX 문법**이어야 한다(Ubuntu 는 `/bin/sh` 가 dash). `guards.sh` G5 가 `dash -n` 으로 검사한다.
+
 ---
 
 ## 5. 상세 설계 — 공통 검사 라이브러리 (#6)

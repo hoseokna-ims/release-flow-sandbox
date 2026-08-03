@@ -55,5 +55,5 @@ if ! git push origin "HEAD:${BRANCH}"; then
   exit 1
 fi
 
-sh scripts/push-tag.sh staging
+bash scripts/push-tag.sh staging
 echo "✅ 스테이징 배포 트리거 완료 (${AFTER})"

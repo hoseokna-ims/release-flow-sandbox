@@ -138,7 +138,7 @@ if ! git push origin "HEAD:${LATEST}"; then
   exit 1
 fi
 
-sh scripts/push-tag.sh staging
+bash scripts/push-tag.sh staging
 echo "✅ [${BRANCHES[*]}] → ${LATEST} 머지·배포 완료 (${AFTER})"
 
 restore_branch

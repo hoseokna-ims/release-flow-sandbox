@@ -67,6 +67,7 @@ git branch -m hotfix/FE-1234 fix/FE-1234
 | `hotfix/* 브랜치에서 실행하세요` | 다른 브랜치에서 finish 를 실행함 | 안내된 `git switch hotfix/X.Y.0` |
 | `중단된 finish 를 발견했습니다` | 앞선 finish 가 강제 종료돼 이어받을 브랜치가 있음 | 자동으로 전환해 이어갑니다 — 그대로 두면 됩니다 |
 | `중단된 준비 단계의 산출물이 남아 있습니다` | 앞선 finish 가 bump·changelog 를 만들다 죽음 | 다시 생성해 이어갑니다 — stash 하지 않아도 됩니다 |
+| `태그 X 가 이번 push 에 포함되지 않았습니다` | master 만 push 하려 함 — 원격에 태그가 없으면 배포가 트리거되지 않음 | `yarn release/hotfix finish` 로 진행. 이미 로컬 머지·태그까지 끝났다면 안내된 `git push --atomic origin master develop X` |
 
 ## 로컬 세팅
 

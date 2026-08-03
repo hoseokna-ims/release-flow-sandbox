@@ -6,10 +6,30 @@
 #    tsc/test 검사 "뒤에 append" 한다. (샌드박스는 tsc/test 검사가 없어 가드만 둔다.)
 
 ZERO=0000000000000000000000000000000000000000
+REMOTE_NAME="$1"
+
+# stdin(push 대상 ref 목록)은 한 번만 읽을 수 있으므로 먼저 통째로 버퍼링한다.
+# 아래 루프를 파이프로 돌리면 서브셸이 되어 exit 1 이 훅을 종료시키지 못하므로
+# here-doc 으로 현재 셸에서 돌린다.
+REFS=$(cat)
+
+# 이번 push 에 refs/tags/<이름> 이 포함돼 있는가
+tag_in_push() {
+  printf '%s\n' "$REFS" | awk -v t="refs/tags/$1" '$3 == t { found = 1 } END { exit found ? 0 : 1 }'
+}
+
+# 원격에 이미 있는 태그가 가리키는 커밋 (annotated 는 peel, 없으면 lightweight 로 폴백)
+remote_tag_commit() {
+  _sha=$(git ls-remote "${REMOTE_NAME}" "refs/tags/$1^{}" 2>/dev/null | cut -f1)
+  [ -n "$_sha" ] || _sha=$(git ls-remote "${REMOTE_NAME}" "refs/tags/$1" 2>/dev/null | cut -f1)
+  printf '%s' "$_sha"
+}
 
 # 운영(master) 푸시 가드
 #  1) 스테이징 버전(patch!=0) 차단
 #  2) 태그 정합성 — package.json 의 version 과 같은 이름의 태그가 그 커밋을 가리켜야 한다.
+#  3) 태그 동반 — 그 태그가 이번 push 에 함께 올라가야 한다. master 만 올라가면
+#     운영 워크플로의 Tag guard 가 배포를 막아 '반쯤 릴리스' 상태가 된다.
 #     정상 플로우(yarn release/hotfix finish)는 master·develop·태그를 --atomic 으로 함께
 #     푸시하므로 통과한다. 래퍼를 우회한 경로(수동 머지 푸시, git flow 직접 호출 후
 #     태그 없이 푸시, 동일 버전 재배포)만 정확히 차단된다.
@@ -45,6 +65,21 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     echo "   → 새 버전으로 릴리스하세요: yarn hotfix start && yarn hotfix finish"
     exit 1
   fi
-done
+
+  # 로컬 태그만 보면 'master 만 push' 를 못 막는다 — 그러면 원격엔 태그가 없어
+  # 운영 워크플로의 Tag guard 가 배포를 차단하고 master 만 올라간 상태로 남는다.
+  # 이미 원격에 같은 커밋으로 올라가 있으면(태그를 따로 먼저 민 경우) 통과시킨다.
+  if ! tag_in_push "$VERSION"; then
+    if [ "$(remote_tag_commit "$VERSION")" != "$local_sha" ]; then
+      echo "❌ 태그 $VERSION 이 이번 push 에 포함되지 않았습니다 — master 만 올라가면"
+      echo "   운영 워크플로의 Tag guard 가 배포를 막아 '반쯤 릴리스' 상태가 됩니다."
+      echo "   → yarn release finish 또는 yarn hotfix finish 로 진행하세요."
+      echo "     (이미 로컬 머지·태그까지 끝난 상태라면: git push --atomic ${REMOTE_NAME} master develop ${VERSION})"
+      exit 1
+    fi
+  fi
+done <<EOF
+$REFS
+EOF
 
 exit 0

@@ -12,15 +12,6 @@ commit_on() { # commit_on <브랜치> <파일이름>
   git switch -q "$1"; echo "$2" > "$2.txt"; git add "$2.txt"; git commit -qm "feat: $2"
 }
 
-# Phase 2(머지·태그)까지 끝나고 push 전에 죽은 상태를, 실제 함수를 호출해 재현한다.
-phase2_state() {
-  node scripts/bump-version.mjs 0.2.0 >/dev/null
-  node scripts/changelog.mjs 0.2.0 >/dev/null
-  git add -A >/dev/null; git commit -qm "chore: release 0.2.0"
-  bash -c 'source scripts/lib/checks.sh; topic_merge_and_tag release 0.2.0' >/dev/null 2>&1
-  git switch -q release/0.2.0
-}
-
 case_hdr "T1  release start / develop behind → 차단"
 fixture t1
 commit_on develop b; git push -q origin develop; git reset -q --hard HEAD~1
