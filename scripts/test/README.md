@@ -31,8 +31,8 @@ SRC=/path/to/imsform-mobile-web yarn test:release-flow
 |---|---|---|
 | `ahead-policy.sh` | 33 | behind/diverged/ahead 차단 · 차단 시 무변경 · 우회 상태 오인 방지 · 재실행 예외 · 정상 플로우 회귀 |
 | `interrupt.sh` | 34 | 단계 경계 4곳에서 `kill -9` · push 실패 레이스 · 롤백 후 재실행 |
-| `dx.sh` | 26 | 자동 이어받기 · Phase 1 산출물 재생성 · 오작동 방지 4종 |
-| `guards.sh` | 8 | pre-push 태그 동반 검사 · 이식성(bash 전용 스크립트를 `sh` 로 호출 금지, `dash -n`) |
+| `dx.sh` | 30 | 자동 이어받기 · Phase 1 산출물 재생성 · 오작동 방지 4종 |
+| `guards.sh` | 17 | pre-push 태그 동반·계보 검사 · worktree 점유 차단 · `topic_merge_and_tag` checkout 실패 처리 · 이식성(`sh` 호출 금지, `dash -n`) |
 | `lib/harness.sh` | — | 픽스처·git 셔임·단언 헬퍼 |
 | `run-all.sh` | — | 전체 실행 + 합계 |
 
@@ -76,3 +76,8 @@ RACE_MARK=/tmp/raced RACE_CMD='cd /path/to/other && git push origin master' \
    fetch 에서 behind 로 먼저 막혀 정작 검사하려던 롤백 경로를 타지 못합니다.
 8. **픽스처의 pre-push 는 가드 블록만 남깁니다.** 실제 리포 판은 앞에 `yarn tsc`·`yarn test` 가
    있는데 픽스처에는 `node_modules` 가 없어 실행할 수 없습니다. 가드 자체는 원본 그대로 검증됩니다.
+9. **`git checkout -- <고정 목록>` 을 쓰지 말 것.** 목록 중 하나라도 리포에 없으면
+   (Yarn Berry 에는 `package-lock.json` 이 없다) **전체가 실패해 아무것도 복원되지 않습니다.**
+   실제로 더러운 경로만 골라 되돌리세요. 이 실수 때문에 수정이 동작하지 않는 것을 테스트가 잡았습니다.
+10. **`if ! func` 로 호출하면 함수 본문 전체에서 `set -e` 가 꺼집니다.** 실패는 명시적으로
+   `return 1` 해야 하고, 마지막에 사후 검증을 두는 편이 확실합니다.

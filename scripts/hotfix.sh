@@ -76,6 +76,7 @@ finish() {
   # 만든 것이다 — 여기서 막으면 설계된 재실행 경로가 막힌다. 그 경우만 확인 후 통과시킨다.
   ALLOW_AHEAD_RESUME=0
   if is_resumed_finish hotfix "${VERSION}"; then ALLOW_AHEAD_RESUME=1; fi
+  require_not_in_other_worktree master develop
   require_synced master develop
   require_topic_synced "${BRANCH}"
   require_merge_clean master  "${BRANCH}"
@@ -86,7 +87,18 @@ finish() {
   # 실패하면 브랜치를 시작 tip 으로 되돌린다 — 더럽혀진 트리가 남아 재실행이
   # 다른 에러로 튕기는 2차 함정을 없앤다(P3).
   if git log -1 --format=%s | grep -qF "chore: hotfix ${VERSION}"; then
-    echo "ℹ️  bump 커밋이 이미 있습니다 → 준비 단계 skip (재실행)"
+    # bump 커밋이 정본이다. 남은 산출물 수정은 되돌린다 — 더러운 채로 두면 Phase 2 의
+    # checkout 이 실패하고, 그러면 태그가 master 가 아닌 곳에 붙는다(FE-1043).
+    if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+      echo "ℹ️  bump 커밋이 이미 있습니다 → 남은 산출물 변경을 되돌리고 skip"
+      # 실제로 더러운 경로만 되돌린다 — 고정 목록을 쓰면 없는 파일(package-lock.json 등)
+      # 하나 때문에 git checkout 전체가 실패해 아무것도 복원되지 않는다.
+      git status --porcelain --untracked-files=no | cut -c4- | while IFS= read -r P; do
+        [ -n "${P}" ] && git checkout -- "${P}"
+      done
+    else
+      echo "ℹ️  bump 커밋이 이미 있습니다 → 준비 단계 skip (재실행)"
+    fi
   else
     trap 'rollback_baseline "${VERSION}"; echo "❌ 준비 단계 실패 — 브랜치를 시작 상태로 되돌렸습니다." >&2; echo "   원인(위 메시지)을 해결한 뒤 같은 명령을 재실행하세요." >&2' ERR
     echo "▶ bump + changelog (${VERSION})"

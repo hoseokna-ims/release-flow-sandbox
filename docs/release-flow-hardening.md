@@ -260,6 +260,14 @@ fi
 
 훅은 `#!/usr/bin/env sh` 이므로 추가 코드도 **POSIX 문법**이어야 한다(Ubuntu 는 `/bin/sh` 가 dash). `guards.sh` G5 가 `dash -n` 으로 검사한다.
 
+#### 4.5.2 태그 쪽 검사 (FE-1043)
+
+위 검사는 `refs/heads/master` 라인이 있을 때만 돈다. 그런데 **머지·태그 단계가 어긋난 릴리스는 '태그만' push 된다** — master/develop 가 원격과 이미 같으면 git 이 그 ref 를 아예 보내지 않기 때문이다. 그러면 위 루프가 한 번도 돌지 않고 통과한다.
+
+그래서 semver 태그(`X.Y.Z`)에 대한 검사를 따로 둔다: **태그가 가리키는 커밋이 이번 push 의 master 이거나, 이미 원격 master 의 조상일 것.** 배포 트리거 태그(`staging`·`prod`)는 semver 형식이 아니라 대상이 아니다.
+
+> 4.5.1 의 "이미 원격에 같은 커밋으로 있으면 통과" 예외는 이제 사실상 도달하기 어렵다(태그 단독 push 가 막히므로). 다른 머신에서 태그가 먼저 올라간 경우를 위한 안전판으로 남겨 둔다.
+
 ---
 
 ## 5. 상세 설계 — 공통 검사 라이브러리 (#6)
@@ -427,6 +435,40 @@ rollback_baseline() {
 - **산출물 판정**은 ① 더러운 경로가 `{package.json, package-lock.json, CHANGELOG.md}` 안에만 있고 ② `package.json` 의 version 이 이미 이번 릴리스 버전일 때만 성립한다(= 우리 bump 가 돌았다는 증거). 하나라도 어긋나면 사용자 변경일 수 있으므로 기존대로 차단한다. Phase 1 은 멱등이므로(bump 는 같은 값, `changelog.mjs` 는 같은 버전 섹션을 교체 — `changelog.mjs:147`) 그대로 덮어쓰면 된다.
 
 > 남은 divergence: 성공한 `release finish` 는 HEAD 를 develop 에 두고 끝난다(avh 는 master). Phase 2 끝에서 토픽 브랜치로 되돌리면 `topic_delete` 가 avh 와 같은 위치로 정리하지만, 눈에 보이는 동작 변화라 이번 범위에서는 손대지 않았다.
+
+#### 6.1.2 checkout 실패를 성공으로 처리하던 결함 (FE-1043)
+
+`topic_merge_and_tag` 는 `if ! topic_merge_and_tag ...` 로 호출된다. **그 문맥에서는 함수 본문 전체에서 `set -e` 가 꺼진다.** 그런데 세 곳의 `git checkout` 이 반환값을 확인하지 않아, checkout 이 실패해도 다음 명령이 그대로 이어졌다.
+
+실패 경로는 이렇게 흘렀다.
+
+1. `git checkout master` 실패 → HEAD 가 토픽 브랜치에 남는다
+2. `git merge --no-ff <토픽>` → **자기 자신을 머지**해 "Already up to date" 로 성공
+3. 두 번째 `git checkout master` 도 실패
+4. `git tag` 가 master 가 아닌 **토픽 tip** 에 붙는다
+5. 함수가 0 을 반환하고 Phase 3 으로 진행
+6. master/develop 가 원격과 같으므로 `--atomic` push 는 **태그만** 전송 → pre-push 의 master 검사는 돌지 않음
+7. 원격에 잘못된 커밋을 가리키는 버전 태그만 남고, 스크립트는 **성공 메시지를 출력**한다
+
+이후 `next-version.mjs` 가 그 태그를 최댓값으로 잡아 다음 버전을 건너뛴다.
+
+**확인된 트리거 두 가지**
+
+| 트리거 | worktree 필요 | 비고 |
+|---|---|---|
+| master/develop 가 다른 worktree 에 체크아웃됨 | 필요 | 실제 운영 환경이 worktree 여러 개인 경우 흔하다 |
+| bump 커밋이 있어 Phase 1 을 skip 했는데 허용된 산출물이 더러운 채로 남음 | **불필요** | §6.1.1 의 완화가 연 경로 |
+
+**대응 — 세 겹**
+
+1. `checkout_or_fail` 로 실패를 원인과 함께 즉시 `return 1`
+2. 함수 성공 전 **사후 검증** — 토픽이 master 에 머지됐는가 · master 가 develop 에 머지됐는가 · 태그가 master 를 가리키는가. 개별 명령을 하나씩 막는 것보다 "끝난 뒤 상태가 맞는가" 를 보는 편이 확실하다
+3. Phase 0 에 `require_not_in_other_worktree` — 실패 후 롤백보다 시작 전 차단이 낫다. finish 는 토픽 브랜치에서만 실행되므로, master/develop 를 잡고 있는 worktree 가 있다면 그건 언제나 '다른' worktree 다(경로 비교 불필요)
+
+그리고 §6.1.1 의 skip 경로가 더러운 산출물을 남기지 않도록, bump 커밋이 이미 있으면 **남은 산출물 변경을 되돌린 뒤** skip 한다.
+
+> 되돌릴 때 고정 파일 목록(`package.json package-lock.json CHANGELOG.md`)을 쓰면 안 된다 —
+> 없는 파일 하나 때문에 `git checkout --` 전체가 실패해 **아무것도 복원되지 않는다**(Yarn Berry 리포에는 `package-lock.json` 이 없다). 실제로 더러운 경로만 골라 되돌린다.
 
 ### 6.2 start — 검증 격차 해소
 
