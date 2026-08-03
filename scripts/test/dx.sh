@@ -89,6 +89,20 @@ git add CHANGELOG.md >/dev/null 2>&1 || true
 run "bash scripts/release.sh finish"
 expect_blocked
 
+case_hdr "B5  bump 커밋 + 산출물 더러움 → 되돌리고 skip (FE-1043)"
+# Phase 0 는 산출물 더러움을 통과시키고 Phase 1 은 bump 커밋이 있으면 skip 한다.
+# 둘이 동시에 성립하면 더러운 파일이 Phase 2 까지 살아남아 checkout 을 막았다.
+fixture b5 release
+node scripts/bump-version.mjs 0.2.0 >/dev/null
+node scripts/changelog.mjs 0.2.0 >/dev/null
+git add -A >/dev/null; git commit -qm "chore: release 0.2.0"
+echo "- 손으로 한 줄 추가" >> CHANGELOG.md
+run "RELEASE_ASSUME_YES=1 bash scripts/release.sh finish"
+expect_success
+expect_has "남은 산출물 변경을 되돌리고 skip"
+released
+git merge-base --is-ancestor 0.2.0^{commit} master; ok "태그가 master 계보 위" $?
+
 case_hdr "B4  정상 플로우 회귀 (깨끗한 트리)"
 fixture b4 release
 run "bash scripts/release.sh finish"

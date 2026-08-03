@@ -82,4 +82,39 @@ done <<EOF
 $REFS
 EOF
 
+# semver 태그(X.Y.Z)는 master 계보 위에 있어야 한다.
+#   · 이번 push 의 master 와 같은 커밋이거나
+#   · 이미 원격 master 의 조상이거나
+# master ref 가 push 에 포함되지 않으면 위 루프는 아예 돌지 않는다. 머지·태그 단계가
+# 어긋난 릴리스는 '태그만' push 되는데(master/develop 가 원격과 같으면 git 이 그 ref 를
+# 보내지 않는다), 그러면 잘못된 커밋을 가리키는 버전 태그가 원격에 남아 다음 버전 계산이
+# 오염된다. 그래서 태그 쪽도 따로 검사한다(FE-1043).
+# 배포 트리거 태그(staging·prod)는 semver 형식이 아니므로 대상이 아니다.
+MASTER_IN_PUSH=$(printf '%s\n' "$REFS" | awk '$3 == "refs/heads/master" { print $2 }')
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in refs/tags/*) ;; *) continue ;; esac
+  [ "$local_sha" = "$ZERO" ] && continue   # 태그 삭제 push 는 대상 아님
+
+  TAG_NAME=${remote_ref#refs/tags/}
+  case "$TAG_NAME" in
+    [0-9]*.[0-9]*.[0-9]*) ;;
+    *) continue ;;
+  esac
+
+  TAG_COMMIT=$(git rev-parse -q --verify "${local_sha}^{commit}" 2>/dev/null || true)
+  [ -n "$TAG_COMMIT" ] || continue
+  [ "$TAG_COMMIT" = "$MASTER_IN_PUSH" ] && continue
+  git merge-base --is-ancestor "$TAG_COMMIT" "refs/remotes/${REMOTE_NAME}/master" 2>/dev/null && continue
+
+  echo "❌ 태그 ${TAG_NAME} 이 master 계보 위에 있지 않습니다 — 잘못된 커밋에 붙은 버전 태그입니다."
+  echo "   태그  → $(git rev-parse --short "$TAG_COMMIT")"
+  echo "   master 를 함께 push 하지 않았거나, 머지·태그 단계가 어긋난 상태입니다."
+  echo "   → 정상 플로우로 진행하세요: yarn release finish 또는 yarn hotfix finish"
+  echo "     (원격에 이미 잘못 올라갔다면: git push --delete ${REMOTE_NAME} ${TAG_NAME})"
+  exit 1
+done <<EOF
+$REFS
+EOF
+
 exit 0

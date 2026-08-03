@@ -207,6 +207,25 @@ require_synced() {
   done
 }
 
+# master/develop 가 다른 worktree 에 체크아웃돼 있으면 finish 가 그 브랜치로 전환할 수 없다.
+# 실패한 뒤 롤백하는 것보다 시작 전에 잡아 안내하는 편이 낫다(FE-1043).
+#
+# finish 는 토픽 브랜치에서만 실행되므로, master/develop 를 잡고 있는 worktree 가 있다면
+# 그건 언제나 '다른' worktree 다 — 현재 worktree 와 경로를 비교할 필요가 없다.
+require_not_in_other_worktree() {
+  local BR WT
+  for BR in "$@"; do
+    WT="$(git worktree list --porcelain 2>/dev/null \
+      | awk -v b="branch refs/heads/${BR}" '/^worktree /{w=substr($0,10)} $0==b{print w}')"
+    [ -z "${WT}" ] && continue
+    echo "❌ ${BR} 가 다른 worktree 에 체크아웃돼 있습니다:"
+    echo "     ${WT}"
+    echo "   릴리스는 master·develop 로 전환해야 하므로 이대로는 진행할 수 없습니다."
+    echo "   → 그 worktree 를 다른 브랜치로 옮기세요: git -C ${WT} switch --detach"
+    exit 1
+  done
+}
+
 # <base> 에 <topic> 을 머지할 때 충돌이 예상되는지 미리 확인.
 # package.json / package-lock.json 은 maxversion 머지 드라이버가 자동 해소하므로 제외한다.
 require_merge_clean() {
@@ -307,25 +326,58 @@ topic_start() {
 # 1) master 머지 → 2) 태그 → 3) develop 에 '태그' 되머지
 # 각 단계는 이미 완료됐으면 건너뛴다 (중단 후 재실행 대비 — avh 와 동일).
 # 브랜치 삭제는 topic_delete 로 분리했다 — push 성공 뒤에만 지우기 위해서다(P2).
+# checkout 실패를 삼키지 않는다 — 실패 원인을 그대로 보여주고 1을 돌려준다.
+checkout_or_fail() {
+  local BR="$1" OUT
+  if OUT="$(git checkout -q "${BR}" 2>&1)"; then
+    return 0
+  fi
+  echo "❌ ${BR} 로 전환하지 못했습니다:" >&2
+  printf '%s\n' "${OUT}" | sed 's/^/     /' >&2
+  return 1
+}
+
+# ⚠️ 이 함수는 `if ! topic_merge_and_tag ...` 로 호출된다. 그 문맥에서는 함수 본문 전체에서
+#    set -e 가 꺼지므로, 실패는 반드시 명시적으로 return 해야 한다. checkout 반환값을
+#    확인하지 않던 탓에, master 가 다른 worktree에 점유됐거나 워킹트리가 더러워 checkout 이
+#    실패하면 → HEAD 가 토픽 브랜치에 남고 → 자기 자신을 머지해 "Already up to date" 로
+#    성공하고 → 태그가 master 가 아닌 토픽 tip 에 붙은 채 0 을 반환했다(FE-1043).
 topic_merge_and_tag() {
   local PREFIX="$1" VERSION="$2" BRANCH="$1/$2"
 
   if ! is_merged_into "${BRANCH}" master; then
-    git checkout -q master
+    checkout_or_fail master || return 1
     GIT_MERGE_AUTOEDIT=no git merge --no-ff "${BRANCH}" || return 1
   fi
 
   if ! git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
-    git checkout -q master
+    checkout_or_fail master || return 1
     git tag -a -m "${VERSION}" "${VERSION}" || return 1
   fi
 
   # 브랜치가 아니라 '태그' 를 머지한다 — avh 기본 동작(`git describe` 정합성).
   # 히스토리에 "Merge tag 'X' into develop" 으로 남는다. skip 판정도 master 기준(avh 동일).
   if ! is_merged_into master develop; then
-    git checkout -q develop
+    checkout_or_fail develop || return 1
     GIT_MERGE_AUTOEDIT=no git merge --no-ff "${VERSION}" || return 1
   fi
+
+  # 사후 검증 — 위 단계 중 하나라도 조용히 어긋났으면 여기서 잡는다.
+  # 개별 검사를 늘리는 것보다 '끝난 뒤 상태가 맞는가' 를 보는 편이 확실하다.
+  if ! is_merged_into "${BRANCH}" master; then
+    echo "❌ ${BRANCH} 가 master 에 머지되지 않았습니다 — 머지·태그 단계가 완료되지 않았습니다." >&2
+    return 1
+  fi
+  if ! is_merged_into master develop; then
+    echo "❌ master 가 develop 에 되머지되지 않았습니다." >&2
+    return 1
+  fi
+  if [ "$(git rev-parse "${VERSION}^{commit}")" != "$(git rev-parse master)" ]; then
+    echo "❌ 태그 ${VERSION} 이 master($(git rev-parse --short master))가 아닌" >&2
+    echo "   $(git rev-parse --short "${VERSION}^{commit}") 를 가리킵니다." >&2
+    return 1
+  fi
+  return 0
 }
 
 # 브랜치 정리 — 원격 먼저, 로컬 나중 (avh 순서: 로컬을 먼저 지우면 경고가 난다)
