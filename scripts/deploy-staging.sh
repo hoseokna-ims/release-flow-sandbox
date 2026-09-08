@@ -44,8 +44,13 @@ fi
 # 미푸시 커밋 가드 — bump(첫 파괴적 변경) 전에 끝낸다. merge-staging.sh 와 같은 구멍이었다.
 # 이 스크립트는 pull 하지 않으므로 behind 도 차단한다 — 그대로 두면 bump·커밋을 만든 뒤
 # push 가 반드시 거부되고, 그 안내를 따라 pull 하면 다음 실행이 patch 를 또 올린다.
-# --force 경로는 fetch 를 건너뛰므로 여기서 대상 브랜치만 따로 최신화한다.
-git fetch -q origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}" 2>/dev/null || true
+#
+# fetch 는 --force 경로에서만 한다. 위 최신 라인 가드가 이미 `git fetch origin --prune` 으로
+# 모든 remote-tracking ref 를 갱신했고, fetch 1회는 실측 2.3~3.2초(imsform → GitHub)로
+# 이 스크립트에서 가장 비싼 단계다 — 무조건 한 번 더 하면 정상 배포마다 그만큼 느려진다.
+if [ "${FORCE}" -eq 1 ]; then
+  git fetch -q origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}" 2>/dev/null || true
+fi
 require_staging_synced "${BRANCH}" block
 
 BEFORE="$(node -p "require('./package.json').version")"

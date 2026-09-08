@@ -109,6 +109,18 @@ expect_ver 0.1.0                                 # bump 전에 막혔다
 expect_clean_tree
 [ "$(remote_sha staging/0.1)" = "${REMOTE_BEFORE}" ]; ok "원격 staging/0.1 무변경" $?
 
+case_hdr "A5b deploy-staging.sh --force 도 같은 가드를 지난다"
+# --force 는 '최신 라인' 검사만 건너뛴다. 미푸시 커밋 가드는 그대로 지나야 한다 —
+# refresh-staging.sh(release/hotfix finish Phase 4)가 이 경로로 배포한다.
+fixture_staging a5b
+git switch -q staging/0.1
+echo u > u.txt; git add u.txt; git commit -qm "fix: 사람이 직접 고친 것"
+run "bash scripts/deploy-staging.sh --force"
+expect_blocked
+expect_has "우회 조작의 흔적"
+expect_ver 0.1.0
+expect_clean_tree
+
 # ══ A6  behind — 호출부에 따라 갈린다 ═════════════════════════════════
 case_hdr "A6  behind + merge-staging → 통과 (바로 git pull 한다)"
 fixture_staging a6
@@ -128,6 +140,19 @@ run "bash scripts/deploy-staging.sh"
 expect_blocked
 expect_has "뒤처졌습니다"
 expect_ver 0.1.0                                 # bump 전에 막혔다
+expect_clean_tree
+
+case_hdr "A6c behind + deploy-staging --force → 차단 (--force 경로도 fetch 한다)"
+# --force 는 최신 라인 가드의 `git fetch --prune` 을 건너뛴다. 그 경로에서도 대상 브랜치를
+# 따로 fetch 하지 않으면 remote-tracking 이 낡아 behind 를 놓친다 — 이 케이스가 그걸 고정한다.
+# (fetch 1회는 실측 2.3~3.2초라 정상 경로에서 두 번 돌지 않게 --force 에서만 한다)
+fixture_staging a6c
+advance_remote a6c
+git switch -q staging/0.1
+run "bash scripts/deploy-staging.sh --force"
+expect_blocked
+expect_has "뒤처졌습니다"
+expect_ver 0.1.0
 expect_clean_tree
 
 # ══ A7  새 클론 회귀 ══════════════════════════════════════════════════
