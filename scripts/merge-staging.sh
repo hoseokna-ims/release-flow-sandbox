@@ -24,6 +24,8 @@ source scripts/lib/checks.sh
 #   · 머지 충돌 → staging 잔류. 충돌 해결·커밋은 staging 위에서 이어져야 한다.
 #   · 배포 트리거 태그 push 실패 → staging 잔류. 안내하는 재실행 명령
 #     (scripts/push-tag.sh staging)이 staging/* 브랜치를 요구한다.
+#   · 설치 정합성 실패 → staging 잔류. 안내하는 yarn install 이 '이 라인의 락파일' 기준으로
+#     돌아야 한다 — ORIG_BRANCH 로 되돌리면 develop 라인 의존성을 설치하게 된다(FE-1047).
 ORIG_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 restore_branch() { git switch "${ORIG_BRANCH}" >/dev/null 2>&1 || true; }
 
@@ -100,6 +102,24 @@ require_staging_synced "${LATEST}" pull
 echo "▶ 최신 staging: ${LATEST}"
 git switch "${LATEST}"
 git pull origin "${LATEST}" --no-edit
+
+# 설치 정합성 사전검사 — switch·pull 이후, 첫 파괴적 변경(머지) 이전.
+#
+# 원인과 증상이 다른 단계에 있다. 스큐는 바로 위 switch 에서 '생기고', 증상은 ⑥ push 의
+# pre-push(`yarn tsc --noEmit`)에서 '나타난다' — 그 사이에 커밋 2개(머지·bump)가 생긴다.
+# ④ 머지는 훅이 없고(git 은 머지 커밋에 pre-merge-commit 을 쓴다), ⑤ bump 커밋의 pre-commit
+# 은 staged 에 ts/tsx 가 없어 no-op 이다. 그래서 ⑥ 까지 아무도 모른다.
+#
+# Phase 0(switch 전)에 두면 이번 사고를 못 잡는다 — develop 라인 브랜치에서 실행하면 그 시점
+# package.json·락파일과는 일치하므로 통과한다. 사고의 타입 에러 5건 중 4건이 이 스큐였다.
+#
+# HEAD 는 staging 에 남긴다 — 안내하는 yarn install 이 '이 라인의 락파일' 기준으로 돌아야 한다.
+if ! node scripts/check-install-sync.mjs; then
+  echo "   현재 브랜치는 ${LATEST} 입니다 — 이 라인의 락파일 기준으로 설치됩니다."
+  echo "   머지·bump 는 시작하지 않았습니다. 설치를 맞춘 뒤 같은 명령을 다시 실행하세요:"
+  echo "     yarn install && yarn staging:merge ${BRANCHES[*]}"
+  exit 1
+fi
 
 # 빈 배포 판정 기준 = 롤백 기준 SHA = 머지를 시작하기 직전의 tip("git pull 이후").
 # pull 까지 되돌리지 않는다 — 되돌리면 재실행마다 다시 pull 해야 하고 로컬이 origin 보다

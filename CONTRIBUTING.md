@@ -67,6 +67,8 @@ git branch -m hotfix/FE-1234 fix/FE-1234
 | `push 안 된 로컬 커밋 N개` (staging/*) | 스테이징 스크립트 밖에서 `staging/*` 에 직접 커밋한 흔적 — 리뷰·CI 없이 스테이징에 배포됨 | 필요한 작업이면 작업 브랜치로 옮겨 push 후 `yarn staging:merge`, 잔재면 안내된 `git reset --hard origin/staging/X.Y` |
 | `중단된 스테이징 배포의 재실행으로 보입니다` | 앞선 `staging:merge`/`staging:deploy` 가 push 전에 죽어 미푸시 커밋이 남음 | 목록을 확인하고 맞으면 `y` — 이어서 마무리됩니다 |
 | `미푸시 bump 커밋이 이미 있어 ... 건너뜁니다` | 앞선 배포가 만든 bump 커밋을 재사용 — 버전을 두 번 올리지 않습니다 | 정상입니다. 그대로 두면 됩니다 |
+| `설치본이 이 라인의 락파일과 다릅니다` | 로컬 `node_modules` 가 대상 staging 라인과 다름 — 이대로면 pre-push 타입 검사가 **내 코드와 무관한 오류**를 냅니다 | 그 자리(staging 라인)에서 `yarn install` 후 재실행. 브랜치를 옮기지 마세요 — 다른 라인 의존성이 설치됩니다 |
+| `이 라인은 develop 과 의존성 선언이 다릅니다` | 정보성. develop 기준으로 검증한 브랜치가 여기서 처음 그 조합을 만납니다 | 차단은 아닙니다. 타입 검사가 실패하면 라인 차이를 먼저 의심하세요 |
 | `staging/X.Y 가 origin 보다 N 커밋 뒤처졌습니다` | `staging:deploy` 는 pull 하지 않으므로 이대로면 push 가 거부됨 | 안내된 `git pull` 후 재실행 (`staging:merge` 는 스스로 pull 하므로 이 메시지가 없습니다) |
 | `hotfix/* 브랜치에서 실행하세요` | 다른 브랜치에서 finish 를 실행함 | 안내된 `git switch hotfix/X.Y.0` |
 | `중단된 finish 를 발견했습니다` | 앞선 finish 가 강제 종료돼 이어받을 브랜치가 있음 | 자동으로 전환해 이어갑니다 — 그대로 두면 됩니다 |

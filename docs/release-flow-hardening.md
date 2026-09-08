@@ -329,6 +329,145 @@ imsform(Yarn Berry) 양쪽에 존재하지 않아 죽은 코드였다 — 두 �
 → 신규 13건 실패, 회귀·음성 판정 케이스(D2·D3b·D3c·D4·D5·D7b·D8)는 양쪽 통과.
 수정 전 D6 는 **차단(exit=1)** 된다 — 위 제목 기반 판정의 결함이 그대로 드러난다.
 
+### 4.2.4 설치 정합성 사전검사 (FE-1047)
+
+**문제(실측)**: 사고에서 `tsc --noEmit` 이 5건 실패했는데 **4건은 코드 결함이 아니었다.**
+로컬 설치본이 `react 18.3.1` / `@types/react 18.3.28` 인데 `staging/0.61` 은
+`next 16.2.12` / `react ^19` / `@types/react ^19` 였다. 사용자는 자기 코드가 5군데
+깨졌다고 읽고 그걸 고치려 든다. 아무 스크립트도 이를 확인하지 않았다.
+
+§1.2 의 라인 스큐가 상시 조건이므로(#1464·#1468 이 develop 머지 대상이 아니다) 이 오인은
+1회성이 아니라 반복 조건이다. 앞의 세 티켓이 *"실패했을 때 안전한가"* 를 다뤘고 이 티켓은
+*"왜 실패했는지 오인하지 않는가"* 를 다룬다.
+
+**`yarn install --immutable` 은 해법이 아니다.** `yarn install --help` 그대로
+*"Abort with an error exit code if the lockfile was to be modified"* — **락파일이 바뀔 때만**
+실패한다. `node_modules` 가 어긋나면 보고하지 않고 링크 단계를 실행해 조용히 고친다(exit 0).
+즉 진단하지 못하면서 배포 스크립트가 install 을 시작하는 결과가 된다.
+`node_modules/.yarn-state.yml` 에도 락파일 체크섬이 없다(`grep -ic checksum` → 0).
+Yarn 4 에 읽기 전용 정합성 판정의 1급 수단이 없다.
+
+**설계 — `scripts/check-install-sync.mjs` (읽기 전용, node 만 사용)**
+
+`package.json` 의 `dependencies`/`devDependencies` 각 항목에 대해 `yarn.lock` 의 resolution
+버전과 `node_modules/<pkg>/package.json` 의 실제 버전을 대조하고, 불일치 목록과 함께
+non-zero 로 종료한다. 외부 명령은 `git show origin/develop:package.json` 하나뿐이다.
+
+**yarn 을 호출하지 않는 것이 하드 제약이다** — 하네스 픽스처에는 yarn 도 `.yarnrc.yml` 의
+`yarnPath` 도 없고 셔임은 git 하나뿐이다. 픽스처가 부를 수 있는 것은 `node` 뿐이다(E10 이 고정).
+
+**락파일 형식 둘을 모두 다룬다.** 이 저장소는 yarn 1, imsform 은 Berry v8 이다 — 형식을
+하나만 다루면 이식본에서 검사가 **조용히 무력화**된다.
+
+| | descriptor | version 줄 |
+|---|---|---|
+| yarn 1 | `"left-pad@^1.0.0":` | `  version "1.3.0"` |
+| Berry v2+ | `"left-pad@npm:^1.0.0":` | `  version: 1.3.0` |
+
+실측으로 파서가 공허하지 않음을 확인했다 — imsform 의 선언 **84개 전부** 락파일에 매칭된다
+(`react = 19.2.8`, `next = 16.2.12`).
+
+**호출 위치: `git switch` + `git pull` 이후, `git merge` 이전.**
+
+이 문제의 핵심은 **원인과 증상이 다른 단계에 있다**는 것이다. imsform-mobile-web 의 훅 실물을
+기준으로 어디서 무엇이 도는지 확정해 둔다(`.husky/pre-commit`·`.husky/pre-push` 실측).
+
+```
+② git switch staging/0.61 + git pull      ← 원인(스큐)이 여기서 '생긴다'
+③ [설치 정합성 검사]                       ← 여기서 '잡는다'
+④ git merge --no-ff                        훅 없음
+⑤ git commit  chore: staging deploy <ver>  pre-commit → no-op
+⑥ git push → pre-push → yarn tsc --noEmit  ← 증상이 여기서 '나타난다'  ★
+⑦ bash scripts/push-tag.sh staging
+```
+
+| 단계 | 도는 훅 | 실제로 실행되는 것 |
+|---|---|---|
+| ④ 머지 커밋 | — | 아무것도. git 은 머지 커밋에 `pre-merge-commit` 을 쓰고 imsform 엔 그 훅이 없다 |
+| ⑤ bump 커밋 | `pre-commit` | 아무것도. 훅이 `git diff --cached \| grep -E '\.(js\|jsx\|ts\|tsx)$'` 로 걸러서 통과한다 — staged 는 `package.json`·`CHANGELOG.md`·`STAGING_CHANGELOG.md` 뿐이다 |
+| ⑥ push | **`pre-push`** | **`yarn tsc --noEmit`** → 실패 시 중단. 그다음 `yarn test`(vitest), 그다음 태그 가드(#39·#40) |
+
+즉 **eslint 는 이 경로에서 아예 돌지 않는다**(`lint-staged` 는 `pre-commit` 전용). 사고에서
+5건을 낸 것은 `pre-push` 의 `tsc --noEmit` 이다. ②에서 이미 깨진 상태인데 ⑥까지 아무도
+모르고, 그 사이에 커밋 2개(머지·bump)가 생긴다.
+
+> 예외: **머지 충돌을 손으로 해결하고 `git commit` 하는 경로**는 다르다. 충돌 파일이
+> `.tsx` 면 `pre-commit` 이 `eslint --fix` + `prettier --write` 를 돌린다. 그 커밋은
+> 스크립트가 아니라 사용자가 만드는 것이라 이 설계의 대상이 아니다.
+
+②와 ⑥ 사이 어디에 둘지가 유일한 선택지이고, ③을 고른 이유는 둘이다.
+
+| | ③ 에 두면 | ⑥ 메시지만 개선하면 |
+|---|---|---|
+| 오해를 부르는 tsc 출력 | **아예 나오지 않는다** | 일단 보고 나서 설명을 읽는다 |
+| 되돌릴 커밋 | 0개 (아직 만들지 않았다) | 2개 (§4.2.1 의 롤백이 처리) |
+
+P1(모든 검사는 첫 변경 전에)과도 맞고, §4.2.1 과 짝이 된다 — **설치가 맞은 상태에서 ⑥ 이
+실패하면 그건 진짜 결함**이므로 그때는 "pre-push 훅 거부 → 원인 수정 후 재실행" 안내가
+정확해진다.
+
+Phase 0(switch 전)에 두면 이번 사고를 못 잡는다 — develop 라인 브랜치에서 실행하면 그 시점
+`package.json`·락파일과는 일치하므로 통과하고, 스큐는 switch 직후에 발생한다
+(E6 이 양쪽을 다 확인한다: 작업 브랜치에서 직접 실행 → 통과, 같은 상태의 `staging:merge` → 차단).
+
+**⑥ 에서 tsc 가 실패하는 원인은 세 종류이고 이 티켓이 닫는 것은 하나다.**
+
+| 원인 | 사고 당시 | 이 티켓 |
+|---|---|---|
+| ① 설치본 스큐 (`react 18.3.1` vs 라인의 `^19` → `LegacyRef` 시그니처 변경) | **4건** | **✅ ③ 에서 차단 + 불일치 목록** |
+| ② 진짜 코드 결함 (`noUncheckedIndexedAccess`) | 1건 | ❌ 당연히. §4.2.1 이 안전하게 롤백하고 재실행으로 안내 |
+| ③ `generate:routes` 산출물 stale (`CONTRACT_DRIVING_EVALUATION_CONTRACT_ID` 없음) | 잠재(실측 재현) | ❌ **미해결** — 아래 |
+
+③ 도 코드 결함이 아닌 환경 문제이고 같은 위치에서 같은 오인을 만든다. 산출물 3개가 모두
+gitignore 라 라인을 전환해도 이전 라인의 것이 그대로 남는다. 이 티켓에서 뺀 이유는 읽기 전용
+판정이 불가능하기 때문이다 — 최신성을 확인하려면 생성기를 돌려야 하고 그건 (a) 쓰기 작업이며
+(b) `yarn` 호출이라 위 하드 제약을 깬다. P1 의 `CONTRIBUTING.md` 에 "라인 전환 후
+`yarn install` + `yarn generate:routes`" 를 적는 것으로 대응한다. 스크립트로 닫으려면
+별도 티켓이 필요하고, 그때 설계의 핵심은 "생성물 최신성을 어떻게 읽기 전용으로 판정하느냐" 다.
+
+**차단 시 HEAD 는 staging 에 남긴다.** §4.2.1 의 "롤백까지 끝난 실패는 `ORIG_BRANCH` 복귀"
+규칙의 예외다 — 안내하는 `yarn install` 이 **이 라인의 락파일** 기준으로 돌아야 하고,
+`ORIG_BRANCH` 로 되돌리면 develop 라인 의존성을 설치하게 된다.
+
+**오탐을 만들지 않는다.** 이 검사는 배포 경로를 차단하므로 오탐이 곧 배포 차단이고, 그러면
+사람이 `RELEASE_ASSUME_YES` 나 `HUSKY=0` 으로 도망가 #39·#40 의 태그 가드까지 함께 꺼진다.
+그래서 **판정할 수 있는 것만 판정한다.**
+
+| 상황 | 처리 |
+|---|---|
+| `yarn.lock` 없음 · `.pnp.cjs` 있음 | 조용히 통과 — 비교 기준이 없다(하네스 픽스처가 이 조건이다) |
+| 락파일에서 선언을 찾지 못함 | **차단하지 않고** "판정하지 않은 N건" 만 알린다. 대개 락파일이 낡은 것이다(실측: 이 저장소의 `husky@9.0.2` 가 `yarn.lock` 에 없다) |
+| 라인 의존성 격차(develop 과 선언이 다름) | **차단하지 않고** 정보성 한 줄. 두 라인이 크게 어긋난 시기에는 상시 성립해서(실측 17건) 확인을 걸면 매 배포가 confirm 이 된다 |
+| 설치본 ≠ 락파일 · `node_modules` 없음 | **차단** + 목록 + `yarn install` |
+
+라인 격차 안내의 목적은 행동 지시가 아니라 **감각 교정**이다 — "pre-push 의 타입 검사가
+실패하면 내 코드가 아니라 라인 차이일 수 있다" 를 미리 알려주는 것이 사고의 오인을 막는다.
+
+**`deploy-staging.sh` 에는 넣지 않았다.** 그 스크립트는 라인을 전환하지 않으므로 스큐를
+*만들지* 못한다. 넣으면 폴백 배포가 라인 전환과 무관한 조건에 걸리게 된다. 필요하면 한 줄이다.
+
+**생성물(`generate:routes`) 갱신은 범위 밖이다.** 산출물은 모두 gitignore 이고 검증을
+스크립트에 넣지 않기로 했으므로(§보류) pre-push 가 계속 담당한다. P1 의 `CONTRIBUTING.md` 에
+"라인 전환 후 `yarn install` + `yarn generate:routes`" 를 적는다.
+
+**성능 — 지배 비용은 네트워크 fetch 다** (실측, imsform → GitHub).
+
+| 단계 | 비용 |
+|---|---|
+| `git fetch` 1회 | **2.3~3.2초** |
+| `check-install-sync.mjs` 전체 | 0.04초 (node 시작 0.015 + 락파일 435KB 파싱 0.0009 + `git show` 0.01) |
+| `git branch -r --contains` (원격 브랜치 1186개 · 커밋 9095개) | 0.01초. `staging_ahead_is_ours` 안에서 ahead > 0 일 때만 돈다 |
+
+그래서 FE-1044~1047 이 추가한 로컬 검사들은 전부 합쳐도 fetch 1회의 2% 미만이다.
+반대로 **§4.2.2 가 `deploy-staging.sh` 에 넣은 단일 refspec fetch 는 정상 경로에서 최신 라인
+가드의 `git fetch --prune` 과 중복돼 매 배포에 ~2.4초를 더하고 있었다** — `--force` 경로
+(최신 라인 가드를 건너뛰므로 fetch 도 건너뛴다)에서만 하도록 고쳤다. `--force` 에서도 fetch 가
+빠지지 않는지는 `staging-ahead.sh` A6c 가 고정한다(behind 를 놓치면 실패한다).
+
+**검증**: `scripts/test/staging-install-sync.sh` 54건 + `staging-ahead.sh` A5b·A6c(`--force`
+경로) 2건. 음성 대조(FE-1047 직전 `827edd3` 를 `SRC`) → 신규 22건 실패, 회귀 케이스
+(E2 일치 · E4 문구 부재 · E8b Berry 일치 · E9 락파일 없음 · E9b PnP)는 양쪽 통과.
+
 ### 4.3 `deploy-staging.sh` — 최신 라인 가드 (#3)
 
 **문제(실측)**: 옛 라인 `staging/0.20` 체크아웃 상태에서 실행하면 그대로 배포되어 **`staging` 태그가 옛 코드로 이동** (스테이징 서버 교체).
