@@ -10,7 +10,7 @@
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-HARNESSES=(ahead-policy interrupt dx guards)
+HARNESSES=(ahead-policy interrupt dx guards staging-rollback)
 TOTAL_PASS=0; TOTAL_FAIL=0; FAILED_HARNESSES=()
 LOG_DIR="${TMPDIR:-/tmp}/release-flow-test"
 mkdir -p "${LOG_DIR}"

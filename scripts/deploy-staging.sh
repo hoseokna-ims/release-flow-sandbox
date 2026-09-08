@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 스테이징 배포: patch +1 (운영형 버전 퇴행 복구 자동 포함) → 커밋 → push → staging 태그 트리거.
+# 스테이징 배포: patch +1 → 커밋 → push → staging 태그 트리거.
 # 반드시 최신 staging/* 라인에서, feature 머지·커밋이 끝난 상태에서 실행한다.
 #
 # 사용법: yarn staging:deploy [--force]
