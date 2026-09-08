@@ -462,3 +462,90 @@ rollback_baseline_ref() {
   git reset -q --hard "${BASE_REF_SHA}" >/dev/null 2>&1 || true
   return 0
 }
+
+# ── 스테이징 라인 미푸시 커밋 가드 (FE-1045) ──────────────────────────
+# merge-staging.sh 의 사전검사는 '대상 브랜치' 의 미푸시 커밋만 본다. 로컬 staging/* 자체는
+# 아무도 보지 않았고 `git pull origin <staging>` 은 ahead 상태를 fast-forward 로 조용히
+# 통과시킨다. deploy-staging.sh 도 clean tree 만 봤다. 그래서 사고 잔여 상태(로컬 staging 이
+# ahead)에서 재실행하면 그 위에 또 bump 가 얹혀 미푸시 bump 커밋이 한 번에 push 된다.
+#
+# require_synced 를 그대로 쓰지 않는 이유는 behind 처리가 반대이기 때문이다 —
+# release/hotfix 는 behind 를 차단해야 하지만 merge-staging.sh 는 곧바로 git pull 한다.
+# behind 차단을 그대로 쓰면 정상 플로우(원격이 앞선 staging 에 머지)가 전부 막힌다.
+
+# 미푸시 커밋이 '스테이징 스크립트 자신이 만든 것' 뿐인가.
+#
+# 판정은 좁게 — is_resumed_finish 와 같은 방식으로 first-parent 체인의 모든 커밋이 아래
+# 둘 중 하나여야 하고, 하나라도 어긋나면 실패한다. 사람이 staging 에 직접 커밋한 것을
+# 재실행으로 오인하면 리뷰·CI 를 거치지 않은 커밋이 그대로 스테이징에 배포된다.
+#
+#   1) merge-staging.sh 의 머지 커밋 — "Merge branch '<X>' into <BR>" 형식이고,
+#      2번째 부모가 origin 의 어느 remote-tracking 브랜치에서 도달 가능할 것
+#      (= 머지된 내용 자체는 이미 push 됐다. 아니면 미푸시 작업이 묻어 나간다)
+#   2) bump 커밋 — "chore: staging deploy <ver>", <ver> 는 <BR> tip 의 package.json 과 일치
+#
+# 2번째 부모로 들어온 커밋들은 1) 이 보증하므로 first-parent 체인만 본다.
+# 버전은 워킹트리가 아니라 <BR> tip 에서 읽는다 — merge-staging.sh 는 staging 으로
+# switch 하기 전(=작업 브랜치 위)에서 이 검사를 호출한다.
+staging_ahead_is_ours() {
+  local BR="$1" SHA SUBJ VER P2
+  VER="$(git show "${BR}:package.json" 2>/dev/null | grep -m1 '"version"' \
+    | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  [ -n "${VER}" ] || return 1
+  while IFS= read -r SHA; do
+    [ -z "${SHA}" ] && continue
+    SUBJ="$(git log -1 --format=%s "${SHA}")"
+    [ "${SUBJ}" = "chore: staging deploy ${VER}" ] && continue
+    case "${SUBJ}" in
+      "Merge branch '"?*"' into ${BR}")
+        P2="$(git rev-parse -q --verify "${SHA}^2" 2>/dev/null || true)"
+        [ -n "${P2}" ] || return 1
+        [ -n "$(git branch -r --contains "${P2}" 2>/dev/null)" ] || return 1
+        ;;
+      *) return 1 ;;
+    esac
+  done < <(git rev-list --first-parent "origin/${BR}..${BR}")
+  return 0
+}
+
+# require_staging_synced <staging 브랜치> [pull|block]
+#
+#   ahead / diverged → 차단. 예외는 미푸시 커밋이 전부 스크립트 자신의 것일 때만이고,
+#                      그때도 목록을 보여주고 확인을 받는다(#36 의 예외 설계와 동일).
+#   behind           → 두 번째 인자로 갈린다.
+#                      pull (기본) : 통과 — 호출부가 곧 git pull 한다 (merge-staging.sh)
+#                      block       : 차단 — 호출부는 pull 하지 않으므로 push 가 반드시
+#                                    거부된다. 첫 파괴적 변경(bump) 전에 잡는다
+#                                    (deploy-staging.sh)
+require_staging_synced() {
+  local BR="$1" BEHIND_POLICY="${2:-pull}" BEHIND AHEAD
+  # 로컬 브랜치가 없는 것은 정상이다 — 새 클론에서 첫 배포를 하면 git switch 가
+  # origin 에서 만든다. 비교할 로컬이 없으므로 검사 대상이 아니다.
+  git rev-parse --verify --quiet "refs/heads/${BR}" >/dev/null || return 0
+  git rev-parse --verify --quiet "refs/remotes/origin/${BR}" >/dev/null || return 0
+  read -r BEHIND AHEAD < <(git rev-list --left-right --count "origin/${BR}...${BR}" 2>/dev/null || echo "0 0")
+
+  if [ "${AHEAD}" -gt 0 ]; then
+    if staging_ahead_is_ours "${BR}"; then
+      echo "⚠️  ${BR} 에 push 안 된 로컬 커밋 ${AHEAD}개 — 중단된 스테이징 배포의 재실행으로 보입니다:"
+      git log --oneline "origin/${BR}..${BR}" | sed 's/^/     /'
+      [ "${BEHIND}" -gt 0 ] && echo "     (원격도 ${BEHIND} 커밋 앞서 있습니다 — 이어서 합칩니다)"
+      confirm "   이어서 진행할까요?"
+    else
+      echo "❌ ${BR} 에 push 안 된 로컬 커밋 ${AHEAD}개가 있습니다 — 리뷰·CI 를 거치지 않은 채 스테이징에 배포됩니다:"
+      git log --oneline "origin/${BR}..${BR}" | sed 's/^/     /'
+      echo "   staging/* 는 스테이징 스크립트 밖에서 커밋하지 않습니다 — 우회 조작의 흔적입니다."
+      echo "   → 위 커밋이 필요한 작업이면 작업 브랜치로 옮겨 push 한 뒤 올리세요:"
+      echo "     git switch -c fix/<티켓> ${BR} && git push -u origin fix/<티켓> && yarn staging:merge fix/<티켓>"
+      echo "   → 불필요한 잔재임을 확인했으면: git switch ${BR} && git reset --hard origin/${BR}"
+      exit 1
+    fi
+  fi
+
+  if [ "${BEHIND}" -gt 0 ] && [ "${BEHIND_POLICY}" = "block" ]; then
+    echo "❌ ${BR} 가 origin 보다 ${BEHIND} 커밋 뒤처졌습니다 — 이대로 배포하면 push 가 거부됩니다."
+    echo "   → git switch ${BR} && git pull 후 다시 실행하세요."
+    exit 1
+  fi
+  return 0
+}

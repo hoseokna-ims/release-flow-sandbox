@@ -195,6 +195,29 @@ head_is() {
   ok "HEAD=$1 (실제: ${ACTUAL})" "${ST_}"
 }
 
+# ── 스테이징 공용 헬퍼 ────────────────────────────────────────────────
+# 버전은 워킹트리가 아니라 '커밋된 브랜치 tip' 에서 읽는다 — 스테이징 성공 경로는 HEAD 를
+# 작업 브랜치로 되돌려 놓으므로 워킹트리 package.json 은 bump 되지 않은 값이다.
+ver_of() {
+  git show "$1:package.json" 2>/dev/null \
+    | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+}
+expect_ver() {
+  local BR="${2:-staging/0.1}" ACTUAL ST_
+  ACTUAL="$(ver_of "${BR}")"
+  [ "${ACTUAL}" = "$1" ]; ST_=$?
+  ok "${BR} 버전 = $1 (실제: ${ACTUAL})" "${ST_}"
+}
+expect_unpushed() {
+  local ACTUAL ST_
+  ACTUAL="$(git rev-list --count "origin/$2..$2")"
+  [ "${ACTUAL}" = "$1" ]; ST_=$?
+  ok "$2 미푸시 커밋 ${1}개 (실제: ${ACTUAL})" "${ST_}"
+}
+expect_clean_tree() { [ -z "$(git status --porcelain --untracked-files=no)" ]; ok "워킹트리 클린" $?; }
+remote_sha()        { git ls-remote origin "refs/heads/$1" | cut -f1; }
+count_in()          { git log --oneline "$1" | grep -cF "$2"; }
+
 # 릴리스가 원격까지 완주했는가 — 태그가 origin/master 를 정확히 가리켜야 한다.
 released() {
   local V="${1:-0.2.0}"

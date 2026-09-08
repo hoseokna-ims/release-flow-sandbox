@@ -93,6 +93,10 @@ for BR in "${BRANCHES[@]}"; do
   fi
 done
 
+# 로컬 staging 라인의 미푸시 커밋 가드 — switch/pull 전(=첫 변경 전)에 끝낸다.
+# behind 는 통과시킨다(바로 아래 git pull 이 받아온다). ahead·diverged 만 차단한다.
+require_staging_synced "${LATEST}" pull
+
 echo "▶ 최신 staging: ${LATEST}"
 git switch "${LATEST}"
 git pull origin "${LATEST}" --no-edit
