@@ -4,7 +4,7 @@
 릴리스 스크립트를 건드렸다면 머지 전에 돌리세요.
 
 ```bash
-yarn test:release-flow                 # 전체 (93건, 약 1~2분)
+yarn test:release-flow                 # 전체 (181건, 약 1~2분)
 bash scripts/test/ahead-policy.sh      # 하나만
 ```
 
@@ -24,6 +24,12 @@ SRC=/path/to/imsform-mobile-web yarn test:release-flow
 
 기본 픽스처: `master`(0.1.0, 태그 `0.1.0`) → `develop` 에 커밋 1개.
 `fixture <이름> release|hotfix` 로 토픽 브랜치 start 까지 만들어 둘 수 있습니다.
+스테이징 경로는 `fixture_staging <이름> [작업브랜치]` — `staging/0.1` 과 미머지 작업 브랜치까지
+만들어 둡니다(`merge-staging.sh` 의 라인 불일치 가드가 develop 라인과의 일치를 요구하므로 `0.1` 고정).
+
+픽스처의 `pre-push` 에는 실제 리포의 `yarn tsc`·`yarn test` 자리를 대신하는 **모의 콘텐츠 검사**가
+들어 있습니다. `prepush_fail_on` / `prepush_fail_off` 로 켜고 끄며(마커 파일 `.prepush-fail`),
+꺼져 있으면 아무 일도 하지 않습니다.
 
 ## 구성
 
@@ -33,6 +39,7 @@ SRC=/path/to/imsform-mobile-web yarn test:release-flow
 | `interrupt.sh` | 34 | 단계 경계 4곳에서 `kill -9` · push 실패 레이스 · 롤백 후 재실행 |
 | `dx.sh` | 30 | 자동 이어받기 · Phase 1 산출물 재생성 · 오작동 방지 4종 |
 | `guards.sh` | 17 | pre-push 태그 동반·계보 검사 · worktree 점유 차단 · `topic_merge_and_tag` checkout 실패 처리 · 이식성(`sh` 호출 금지, `dash -n`) |
+| `staging-rollback.sh` | 67 | 스테이징 경로 롤백 · push 실패 원인 3분기 · 중단 후 재개 · 롤백하면 안 되는 두 경로 |
 | `lib/harness.sh` | — | 픽스처·git 셔임·단언 헬퍼 |
 | `run-all.sh` | — | 전체 실행 + 합계 |
 
@@ -81,3 +88,7 @@ RACE_MARK=/tmp/raced RACE_CMD='cd /path/to/other && git push origin master' \
    실제로 더러운 경로만 골라 되돌리세요. 이 실수 때문에 수정이 동작하지 않는 것을 테스트가 잡았습니다.
 10. **`if ! func` 로 호출하면 함수 본문 전체에서 `set -e` 가 꺼집니다.** 실패는 명시적으로
    `return 1` 해야 하고, 마지막에 사후 검증을 두는 편이 확실합니다.
+11. **`ok "... $(cmd)" $?` 로 쓰지 말 것.** 인자를 왼쪽부터 확장하므로 설명 안의 명령치환이
+   먼저 실행되어 `$?` 를 **자기 종료코드로 덮어씁니다** → 항상 0(통과)이 전달됩니다.
+   상태를 먼저 변수로 받으세요. `head_is` 가 실제로 이 형태였고, 모든 하네스의 HEAD 단언이
+   무의미하게 통과하고 있었습니다(FE-1044 에서 새 헬퍼를 쓰다 발견).

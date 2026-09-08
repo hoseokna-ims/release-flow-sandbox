@@ -104,12 +104,48 @@ fixture() {
   esac
 }
 
-# 셔뱅 + 가드 블록(ZERO= 이후)만 남긴다.
+# 셔뱅 + 모의 콘텐츠 검사 + 가드 블록(ZERO= 이후).
+#
 # 실제 리포의 pre-push 는 앞에 yarn tsc / yarn test 가 있는데 픽스처에는 node_modules 가
-# 없어 실행할 수 없다. 가드 블록 자체는 원본 그대로 검증된다.
+# 없어 실행할 수 없다. 그 자리에 마커 파일(.prepush-fail)로 제어하는 모의 검사를 둔다 —
+# "pre-push 가 콘텐츠 검사로 push 를 거부" 하는 경로를 결정론적으로 재현하기 위한 것이다.
+# 마커가 없으면 아무 일도 하지 않으므로 기존 케이스의 동작은 바뀌지 않는다.
+# 가드 블록 자체는 원본 그대로 검증된다.
 _install_pre_push() {
-  awk 'NR==1{print; next} /^ZERO=/{f=1} f{print}' "${SRC}/.husky/pre-push" > .husky/pre-push
+  {
+    printf '%s\n' '#!/usr/bin/env sh'
+    printf '%s\n' 'if [ -f .prepush-fail ]; then'
+    printf '%s\n' '  echo "❌ tsc --noEmit 실패 5건 (하네스 모의 콘텐츠 검사)"'
+    printf '%s\n' '  exit 1'
+    printf '%s\n' 'fi'
+    # 1행(셔뱅)은 위에서 직접 썼으므로 버린다. ZERO= 부터 끝까지가 가드 블록이다.
+    # 1행 액션에서 플래그를 세우면(NR==1||f||/^ZERO=/{f=1;print}) 전체가 출력된다 — 주의.
+    awk 'NR==1{next} /^ZERO=/{f=1} f{print}' "${SRC}/.husky/pre-push"
+  } > .husky/pre-push
   chmod +x .husky/pre-push
+}
+
+# 모의 콘텐츠 검사 on/off. 마커는 untracked 이므로 --untracked-files=no 를 쓰는
+# 워킹트리 검사에는 걸리지 않고, 브랜치를 옮겨도 살아남는다.
+prepush_fail_on()  { : > "${REPO}/.prepush-fail"; }
+prepush_fail_off() { rm -f "${REPO}/.prepush-fail"; }
+
+# 스테이징 픽스처 — staging 라인 + 작업 브랜치까지 만들어 둔다.
+#   fixture_staging <케이스명> [작업브랜치]
+#
+# merge-staging.sh 의 라인 불일치 가드(52-69행)가 origin/develop 의 마이너 라인과 최신
+# staging 라인의 일치를 요구하므로, develop 0.1.0 → staging/0.1 로 맞춘다.
+#
+# 끝나면 HEAD 는 작업 브랜치이고 origin 에는 master·develop·staging/0.1·<작업브랜치> 가
+# 올라가 있다. 작업 브랜치는 develop 에서 따므로 staging 에 아직 머지되지 않은 상태다.
+fixture_staging() {
+  local N="$1" WORKBR="${2:-feature/FE-X}"
+  fixture "${N}"
+  git switch -q -c staging/0.1 develop
+  git push -q -u origin staging/0.1
+  git switch -q -c "${WORKBR}" develop
+  echo w > w.txt; git add w.txt; git commit -qm "feat: w"
+  git push -q -u origin "${WORKBR}"
 }
 
 # Phase 2(머지·태그)까지 끝나고 push 전에 죽은 상태를, 실제 함수를 호출해 재현한다.
@@ -149,7 +185,15 @@ expect_no_tag()  { ! git rev-parse -q --verify "refs/tags/$1" >/dev/null; ok "�
 expect_tag()     { git rev-parse -q --verify "refs/tags/$1" >/dev/null; ok "태그 $1 존재" $?; }
 expect_same()    { [ "$(git rev-parse "$1")" = "$(git rev-parse "$2")" ]; ok "$1 == $2" $?; }
 alive()          { git rev-parse --verify --quiet "refs/heads/$1" >/dev/null; ok "브랜치 $1 생존" $?; }
-head_is()        { [ "$(git rev-parse --abbrev-ref HEAD)" = "$1" ]; ok "HEAD=$1 (실제: $(git rev-parse --abbrev-ref HEAD))" $?; }
+# ⚠️ ok 에 넘길 상태는 반드시 먼저 변수로 받는다. `ok "... $(cmd)" $?` 로 쓰면
+#    설명 안의 명령치환이 실행되면서 $? 를 덮어써 항상 0(통과)이 전달된다 —
+#    head_is 가 실제로 이 형태였고, 모든 하네스의 HEAD 단언이 무의미하게 통과했다(FE-1044).
+head_is() {
+  local ACTUAL ST_
+  ACTUAL="$(git rev-parse --abbrev-ref HEAD)"
+  [ "${ACTUAL}" = "$1" ]; ST_=$?
+  ok "HEAD=$1 (실제: ${ACTUAL})" "${ST_}"
+}
 
 # 릴리스가 원격까지 완주했는가 — 태그가 origin/master 를 정확히 가리켜야 한다.
 released() {

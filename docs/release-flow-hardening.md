@@ -166,6 +166,63 @@ restore_branch() { git switch "${ORIG_BRANCH}" >/dev/null 2>&1 || true; }
 
 충돌 중단 시에는 현재 동작(staging 에 남음)이 옳다 — 안내 메시지가 이미 "해결 → commit → staging:deploy" 흐름을 전제한다.
 
+### 4.2.1 `merge-staging.sh` — 스테이징 경로 롤백 + 실패 원인 구분 (FE-1044)
+
+**문제(실측, 2026-09 사건)**: `yarn staging:merge feature/FE-2996` 이 머지 → `0.61.5→0.61.6` bump
+커밋까지 만든 뒤 `.husky/pre-push` 의 `tsc --noEmit` 5건으로 push 거부. **스크립트는 아무것도
+되돌리지 않았고** 로컬 `staging/0.61` 이 7커밋 ahead 로 남아 사람이 `git reset --hard` 로 치웠다.
+
+`release.sh`·`hotfix.sh` 는 §6.1 에서 Phase 롤백을 받았지만 **스테이징 경로는 받지 못했다.**
+겹친 문제가 셋이다.
+
+| # | 문제 | 결과 |
+|---|---|---|
+| 1 | ⑤ bump+commit 이후 실패에 복구 없음 | 머지·bump 커밋이 로컬에 잔류 |
+| 2 | 모든 push 실패에 `원격이 앞섬 + git pull --no-rebase` 를 출력 | pre-push 거부에도 pull 을 유도 → 그 위에 `staging:deploy` 가 patch 를 또 올려 **버전이 두 번 오른다** |
+| 3 | 중단(Ctrl-C/kill)에 대한 설계 없음 | 머지 커밋만 남고, 재실행하면 "머지로 추가된 새 커밋이 없습니다 — 빈 배포" 경고가 **오작동**해 사용자를 오해시킨다 |
+
+**설계**
+
+- **`record_baseline_ref` / `rollback_baseline_ref` 신규** (`checks.sh`). 기존
+  `record_baseline`/`rollback_baseline` 은 `master`/`develop` 을 하드코딩하고 복원 시
+  `git branch -f master`·`git tag -d` 까지 하므로 스테이징 경로에서 재사용할 수 없다 —
+  여기서 움직이는 ref 는 `staging/<라인>` 하나뿐이고 토픽 브랜치도 버전 태그도 없다.
+- **롤백 기준 SHA = `git pull` 이후의 staging tip.** pull 까지 되돌리면 재실행마다 다시 pull 해야
+  하고 로컬이 origin 보다 뒤처진 채 남는다. §6.1 의 "시작 시점 로컬 SHA" 근거(preflight 에서
+  승인받은 ahead 를 보존한다)는 스테이징에 없다 — 스테이징 경로엔 ahead 승인 절차가 없다.
+- **push 실패 원인은 메시지 문구가 아니라 '상태' 로 판정한다** (git 로케일·버전 무관). 실측 결과:
+
+  | 원인 | `git push --no-verify --dry-run` | 원격 tip 이 HEAD 의 조상 | 안내 |
+  |---|---|---|---|
+  | ⓐ pre-push 훅 거부 | **성공** | 예 | 원인 수정 후 **재실행**. `git pull` 을 안내하지 않는다 |
+  | ⓑ non-fast-forward | 실패 | 아니오 | 원격 선행 — 재실행이 `git pull` 로 받아온다 |
+  | ⓒ 그 외(네트워크·권한) | 실패 | 예 | 위 출력 확인 후 재실행 |
+
+  ⓐ 에서 dry-run 이 성공한다는 것은 "원격은 도달 가능하고 fast-forward 도 가능하다" 는 뜻이므로
+  `git pull` 은 애초에 무의미하다. 두 원인을 뭉갠 것이 위 표의 문제 2 였다.
+- **빈 배포 판정에 재실행 예외.** 머지로 추가된 새 커밋이 0 이어도 **미푸시 커밋이 남아 있으면**
+  그건 '이미 반영된 브랜치' 가 아니라 중단된 실행이 만든 머지 커밋이다(`set -e` 의 ERR 트랩은
+  시그널에 걸리지 않는다 — §6.1.1). 재개로 안내한다. 미푸시 **bump** 커밋이 섞여 있으면 재개로
+  보지 않는다 — 그건 ⑥ 이후에서 죽은 상태이고 이어서 bump 하면 버전이 두 번 오른다(FE-1046 범위).
+
+**최종 HEAD 위치** — §4.2 의 "중단 경로에서는 복귀하지 않는다" 는 롤백 도입으로 근거가 셋으로 갈린다.
+
+| 경로 | HEAD | 근거 |
+|---|---|---|
+| 성공 · 롤백까지 끝난 실패 | `ORIG_BRANCH` | 되돌린 staging 위에 남을 이유가 없다. staging 잔류는 사고 방아쇠(§1.1) |
+| 머지 충돌 | staging 잔류 | 충돌 해결·커밋을 staging 위에서 이어가야 한다 |
+| 배포 트리거 태그 push 실패 | staging 잔류 | 안내하는 `scripts/push-tag.sh staging` 이 `staging/*` 브랜치를 요구한다 |
+
+**⑦ 태그 push 실패는 롤백하지 않는다** (티켓 초안에서 수정). 그 시점에 `${LATEST}` 는 **이미 원격에
+반영됐다.** 되돌리면 로컬이 origin 보다 뒤처져 다음 실행이 그 커밋을 다시 pull 한 뒤 patch 를 또
+올린다 — 고치려던 이중 bump 를 스스로 만든다. 남은 일은 태그 하나뿐이므로 그것만 다시 밀게 한다.
+
+> `deploy-staging.sh` 헤더의 "(운영형 버전 퇴행 복구 자동 포함)" 은 실제 코드에 없어 함께 지웠다.
+
+**검증**: `scripts/test/staging-rollback.sh` 67건. 음성 대조(수정 전 `7586374` 를 `SRC`) → 신규 30건 실패,
+회귀 케이스(R7 머지 충돌·R8 정상 완주)는 양쪽 통과. 수정 전 R1 재현 상태가 사건과 일치한다
+(미푸시 3커밋 · 버전 이미 0.1.1 · HEAD staging 잔류).
+
 ### 4.3 `deploy-staging.sh` — 최신 라인 가드 (#3)
 
 **문제(실측)**: 옛 라인 `staging/0.20` 체크아웃 상태에서 실행하면 그대로 배포되어 **`staging` 태그가 옛 코드로 이동** (스테이징 서버 교체).
@@ -315,6 +372,7 @@ confirm() {
 # require_semver_version <ver>       : X.Y.0 형식 검증
 # require_gitflow                    : command -v git-flow, 미설치 시 brew 안내
 # record_baseline / rollback_baseline: master/develop/브랜치 tip SHA 기록·복원 (§6)
+# record_baseline_ref / rollback_baseline_ref: 단일 ref 기록·복원 — 스테이징 경로용 (§4.2.1)
 ```
 
 **설계 노트**

@@ -434,3 +434,31 @@ rollback_baseline() {
   fi
   return 0
 }
+
+# ── 롤백 지원 (단일 ref — 스테이징 경로) ──────────────────────────────
+# 스테이징 경로(merge-staging.sh)가 움직이는 ref 는 staging/<라인> 하나뿐이다.
+# 토픽 브랜치도, 버전 태그도 없고 master/develop 을 건드릴 이유도 없으므로
+# record_baseline/rollback_baseline 을 재사용할 수 없다 — 그쪽은 master/develop 을
+# 하드코딩하고(409-414) 복원 시 `git branch -f master`·`git tag -d` 까지 한다(418-435).
+#
+# 기준 SHA 는 호출부가 지정한다. 스테이징에서는 "git pull 이후의 staging tip" 이다 —
+# pull 까지 되돌리면 재실행마다 다시 pull 해야 하고 로컬이 origin 보다 뒤처진 채 남는다.
+# finish 의 "시작 시점 로컬 SHA" 근거(preflight 에서 승인받은 ahead 를 보존한다)는
+# 스테이징에 적용되지 않는다 — 스테이징 경로엔 ahead 승인 절차가 없다.
+BASE_REF_BRANCH=""; BASE_REF_SHA=""
+
+record_baseline_ref() {
+  BASE_REF_BRANCH="$1"
+  BASE_REF_SHA="$(git rev-parse "${2:-HEAD}")"
+}
+
+# 기록된 브랜치를 기록된 SHA 로 되돌린다 — 인덱스·워킹트리까지 포함(reset --hard).
+# 커밋 실패로 bump 산출물이 staged 로 남은 상태도 이걸로 정리된다.
+# record_baseline_ref 를 부르기 전에 호출되면 아무것도 하지 않는다(첫 파괴적 변경 이전).
+rollback_baseline_ref() {
+  [ -n "${BASE_REF_BRANCH}" ] || return 0
+  git merge --abort >/dev/null 2>&1 || true
+  git checkout -q -f "${BASE_REF_BRANCH}" >/dev/null 2>&1 || true
+  git reset -q --hard "${BASE_REF_SHA}" >/dev/null 2>&1 || true
+  return 0
+}

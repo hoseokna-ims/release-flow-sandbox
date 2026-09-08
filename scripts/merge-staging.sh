@@ -11,12 +11,19 @@
 # 성공하면 실행 전 브랜치로 복귀한다 — staging 에 남으면 곧바로 이어지는
 # yarn release/hotfix finish 가 브랜치 검사에서 튕겨 수동 우회를 유발한다.
 #
+# bump·커밋(⑤) 이후의 실패는 staging 라인을 "git pull 직후" 상태로 되돌린다(FE-1044).
+#
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 source scripts/lib/checks.sh
 
-# 실행 전 브랜치 기억 (성공 시 복귀용). 중단 경로에서는 복귀하지 않는다 —
-# 충돌 해결·재배포는 staging 브랜치 위에서 이어져야 하기 때문.
+# 실행 전 브랜치 기억. 최종 HEAD 위치는 성공·실패 원인에 따라 셋으로 갈린다.
+#   · 성공, 그리고 롤백까지 끝난 실패(bump·커밋 실패, push 거부) → ORIG_BRANCH 복귀.
+#     되돌린 staging 위에 남을 이유가 없고, staging 에 남으면 곧바로 이어지는
+#     yarn release/hotfix finish 가 브랜치 검사에서 튕긴다(2026-07-29 사고 방아쇠).
+#   · 머지 충돌 → staging 잔류. 충돌 해결·커밋은 staging 위에서 이어져야 한다.
+#   · 배포 트리거 태그 push 실패 → staging 잔류. 안내하는 재실행 명령
+#     (scripts/push-tag.sh staging)이 staging/* 브랜치를 요구한다.
 ORIG_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 restore_branch() { git switch "${ORIG_BRANCH}" >/dev/null 2>&1 || true; }
 
@@ -90,8 +97,11 @@ echo "▶ 최신 staging: ${LATEST}"
 git switch "${LATEST}"
 git pull origin "${LATEST}" --no-edit
 
-# 빈 배포 판정 기준: 머지를 시작하기 직전의 tip
+# 빈 배포 판정 기준 = 롤백 기준 SHA = 머지를 시작하기 직전의 tip("git pull 이후").
+# pull 까지 되돌리지 않는다 — 되돌리면 재실행마다 다시 pull 해야 하고 로컬이 origin 보다
+# 뒤처진 채 남는다. 여기부터 아래 push 성공까지가 롤백 적용 구간이다.
 MERGE_BASE_TIP="$(git rev-parse HEAD)"
+record_baseline_ref "${LATEST}" "${MERGE_BASE_TIP}"
 
 for BR in "${BRANCHES[@]}"; do
   # origin/<branch> 우선, 없으면 로컬 <branch>
@@ -114,14 +124,34 @@ for BR in "${BRANCHES[@]}"; do
   fi
 done
 
-# 머지 결과 새 커밋이 하나도 없으면(이미 전부 반영된 브랜치) 버전만 올라가는 빈 배포가 된다.
-# 의도한 재배포일 수 있으므로 차단하지 않고 확인만 받는다.
+# 머지로 추가된 새 커밋이 0 인 경우는 두 가지이고, 안내가 정반대다.
+#   · 미푸시 커밋도 없다      → 이미 전부 반영된 브랜치. 버전만 올라가는 빈 배포이므로
+#                               의도한 재배포일 수 있어 차단하지 않고 확인만 받는다.
+#   · 미푸시 커밋이 남아 있다 → 중단된 실행(kill·Ctrl-C·크래시. set -e 의 ERR 트랩은
+#                               시그널에 걸리지 않는다)이 만든 머지 커밋이다. 여기서
+#                               "이미 반영됨" 경고를 띄우면 사용자는 중단을 택하고
+#                               머지 커밋이 push 되지 않은 채 영구히 남는다.
+# 미푸시 bump 커밋이 섞여 있으면 재개로 보지 않는다 — 그건 ⑥ 이후에서 죽은 상태이고
+# 이어서 bump 하면 버전이 두 번 오른다(멱등화는 FE-1046 범위).
 if [ "$(git rev-list --count "${MERGE_BASE_TIP}..HEAD")" -eq 0 ]; then
-  echo "⚠️  머지로 추가된 새 커밋이 없습니다 — 이미 ${LATEST} 에 반영된 브랜치입니다."
-  echo "   계속하면 변경 없이 patch 만 올라가는 빈 배포가 됩니다."
-  confirm "   그래도 배포할까요?"
+  UNPUSHED_SUBJECTS="$(git log --format=%s "origin/${LATEST}..HEAD" 2>/dev/null || true)"
+  if [ -n "${UNPUSHED_SUBJECTS}" ] && ! printf '%s\n' "${UNPUSHED_SUBJECTS}" \
+    | grep -qE '^chore: staging deploy [0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "ℹ️  중단된 실행의 재개입니다 — 머지는 이미 로컬에 있고 아직 push 되지 않았습니다:"
+    git log --oneline "origin/${LATEST}..HEAD" | sed 's/^/     /'
+    echo "   이어서 bump·push 를 진행합니다."
+  else
+    echo "⚠️  머지로 추가된 새 커밋이 없습니다 — 이미 ${LATEST} 에 반영된 브랜치입니다."
+    echo "   계속하면 변경 없이 patch 만 올라가는 빈 배포가 됩니다."
+    confirm "   그래도 배포할까요?"
+  fi
 fi
 
+# ⑤ 첫 파괴적 변경. 여기서 실패하면(bump·changelog·커밋 훅 거부 등) 머지 커밋까지
+#    함께 되돌린다 — 반쯤 진행된 트리가 남으면 재실행이 워킹트리 검사에서 튕긴다(2차 함정).
+trap 'rollback_baseline_ref; restore_branch;
+      echo "❌ 버전 bump·커밋 단계가 실패했습니다 — ${LATEST} 를 시작 상태로 되돌렸습니다(머지·bump 커밋 없음)." >&2;
+      echo "   → 위 원인을 해결한 뒤 같은 명령을 다시 실행하세요: yarn staging:merge ${BRANCHES[*]}" >&2' ERR
 BEFORE="$(node -p "require('./package.json').version")"
 node scripts/bump-version.mjs patch >/dev/null
 AFTER="$(node -p "require('./package.json').version")"
@@ -131,14 +161,60 @@ git add package.json
 [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
 [ -f STAGING_CHANGELOG.md ] && git add STAGING_CHANGELOG.md || true
 git commit -qm "chore: staging deploy ${AFTER}"
+trap - ERR
 echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
 
-if ! git push origin "HEAD:${LATEST}"; then
-  echo "⚠️ push 거부됨(원격이 앞섬). 'git pull --no-rebase' 후 yarn staging:deploy 로 마무리하세요."
+# ⑥ push — pre-push 훅이 여기서 처음 콘텐츠 검사(tsc·test)를 돌린다.
+#    출력을 버퍼링하는 이유: 실패 원인 판정 전에 훅이 낸 실패 내용을 먼저 보여줘야 한다.
+if ! PUSH_OUT="$(git push origin "HEAD:${LATEST}" 2>&1)"; then
+  printf '%s\n' "${PUSH_OUT}"
+  echo
+  # 원인을 메시지 문구가 아니라 '상태' 로 판정한다(git 로케일·버전 무관).
+  #   ⓐ --no-verify 재시도(dry-run)가 성공한다 → 막은 것은 로컬 훅뿐이다.
+  #      원격은 도달 가능하고 fast-forward 도 가능하다는 뜻이므로 git pull 은 무의미하다.
+  #   ⓑ 아니면 원격 tip 이 우리 계보 밖으로 갔는지 확인한다 → non-fast-forward.
+  #   ⓒ 둘 다 아니면 그 외(네트워크·권한·원격 설정).
+  # ⓐ·ⓑ 를 뭉개고 모두에게 'git pull' 을 안내하면 pre-push 거부에서도 pull 이 실행되고,
+  # 그 위에 staging:deploy 가 patch 를 또 올려 버전이 두 번 오른다(2026-09 사건).
+  if git push --no-verify --dry-run origin "HEAD:${LATEST}" >/dev/null 2>&1; then
+    rollback_baseline_ref
+    restore_branch
+    echo "❌ push 가 로컬 검사(.husky/pre-push)에 막혔습니다 — 원격은 변경되지 않았습니다."
+    echo "   위 실패 내용이 원인입니다. ${LATEST} 는 시작 상태로 되돌렸습니다(머지·bump 커밋 없음)."
+    echo "   → 원인을 고쳐 작업 브랜치에 커밋·push 한 뒤 같은 명령을 다시 실행하세요:"
+    echo "     yarn staging:merge ${BRANCHES[*]}"
+    exit 1
+  fi
+  # 명시 refspec 으로 fetch 한다 — remote-tracking ref 갱신을 git 버전에 의존하지 않기 위해.
+  git fetch -q origin "+refs/heads/${LATEST}:refs/remotes/origin/${LATEST}" 2>/dev/null || true
+  if ! git merge-base --is-ancestor "refs/remotes/origin/${LATEST}" HEAD 2>/dev/null; then
+    rollback_baseline_ref
+    restore_branch
+    echo "❌ push 거부됨 — 원격 ${LATEST} 가 앞서 있습니다(다른 사람이 먼저 배포했습니다)."
+    echo "   ${LATEST} 는 시작 상태로 되돌렸습니다 — 재실행이 git pull 로 원격 변경을 받아옵니다."
+    echo "   → 그대로 다시 실행하세요: yarn staging:merge ${BRANCHES[*]}"
+    exit 1
+  fi
+  rollback_baseline_ref
+  restore_branch
+  echo "❌ push 실패 — 원인은 위 출력을 확인하세요(네트워크·권한·원격 설정 등)."
+  echo "   ${LATEST} 는 시작 상태로 되돌렸습니다."
+  echo "   → 원인을 해결한 뒤 같은 명령을 다시 실행하세요: yarn staging:merge ${BRANCHES[*]}"
   exit 1
 fi
+printf '%s\n' "${PUSH_OUT}"
 
-bash scripts/push-tag.sh staging
+# ⑦ 배포 트리거 태그. 여기서 실패하면 롤백하지 않는다 — ${LATEST} 는 이미 원격에
+#    반영됐고, 되돌리면 로컬이 origin 보다 뒤처져 다음 실행이 그 커밋을 다시 pull 한 뒤
+#    patch 를 또 올린다(이중 bump). 남은 일은 태그 하나뿐이므로 그것만 다시 밀면 된다.
+#    ORIG_BRANCH 로 복귀하지 않는다 — 안내하는 명령이 staging/* 브랜치를 요구한다.
+if ! bash scripts/push-tag.sh staging; then
+  echo
+  echo "❌ 배포 트리거 태그(staging) push 에 실패했습니다 — 스테이징 서버는 아직 갱신되지 않았습니다."
+  echo "   ${LATEST}(${AFTER})는 이미 원격에 반영됐으므로 되돌리지 않습니다."
+  echo "   → 태그만 다시 밀면 됩니다(현재 브랜치 ${LATEST} 에서): bash scripts/push-tag.sh staging"
+  exit 1
+fi
 echo "✅ [${BRANCHES[*]}] → ${LATEST} 머지·배포 완료 (${AFTER})"
 
 restore_branch
