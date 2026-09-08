@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
 # 스테이징 배포: patch +1 → 커밋 → push → staging 태그 트리거.
+# 이 버전의 미푸시 bump 커밋이 이미 있으면 bump·changelog·커밋을 건너뛴다(멱등).
 # 반드시 최신 staging/* 라인에서, feature 머지·커밋이 끝난 상태에서 실행한다.
 #
 # 사용법: yarn staging:deploy [--force]
@@ -48,15 +49,27 @@ git fetch -q origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}" 2>/dev
 require_staging_synced "${BRANCH}" block
 
 BEFORE="$(node -p "require('./package.json').version")"
-node scripts/bump-version.mjs patch >/dev/null
-AFTER="$(node -p "require('./package.json').version")"
-node scripts/changelog.mjs "${AFTER}" --staging   # STAGING_CHANGELOG.md 재생성 (라인 스냅샷)
-git add package.json
-[ -f package-lock.json ] && git add package-lock.json || true
-[ -f CHANGELOG.md ] && git add CHANGELOG.md || true
-[ -f STAGING_CHANGELOG.md ] && git add STAGING_CHANGELOG.md || true
-git commit -qm "chore: staging deploy ${AFTER}"
-echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
+
+# 멱등: 이 버전의 미푸시 bump 커밋이 이미 있으면 다시 만들지 않는다.
+# merge-staging.sh 의 실패 안내가 "staging:deploy 로 마무리" 이므로 그 안내를 따를 때마다
+# patch 가 한 번 더 올라갔다 — 배포된 적 없는 버전 번호를 소비하면서.
+AFTER="${BEFORE}"
+RESUME_BUMP="$(staging_unpushed_bump "${BRANCH}")"
+if [ -n "${RESUME_BUMP}" ]; then
+  echo "ℹ️  미푸시 bump 커밋이 이미 있어 bump·changelog·커밋을 건너뜁니다 (버전 ${AFTER} 유지):"
+  git log -1 --oneline "${RESUME_BUMP}" | sed 's/^/     /'
+else
+  node scripts/bump-version.mjs patch >/dev/null
+  AFTER="$(node -p "require('./package.json').version")"
+  node scripts/changelog.mjs "${AFTER}" --staging   # STAGING_CHANGELOG.md 재생성 (라인 스냅샷)
+  # 산출물만 스테이징한다. package-lock.json 분기는 이 리포(yarn)에 존재하지 않아 죽은
+  # 코드였다 — 고정 목록은 없는 파일 하나로 전체가 실패하는 함정이 된다(#40).
+  git add package.json
+  [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
+  [ -f STAGING_CHANGELOG.md ] && git add STAGING_CHANGELOG.md || true
+  git commit -qm "chore: staging deploy ${AFTER}"
+  echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
+fi
 
 if ! git push origin "HEAD:${BRANCH}"; then
   echo "⚠️ push 거부됨(원격이 앞섬). 'git pull --no-rebase' 후 다시 yarn staging:deploy 실행하세요."

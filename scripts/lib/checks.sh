@@ -473,38 +473,77 @@ rollback_baseline_ref() {
 # release/hotfix 는 behind 를 차단해야 하지만 merge-staging.sh 는 곧바로 git pull 한다.
 # behind 차단을 그대로 쓰면 정상 플로우(원격이 앞선 staging 에 머지)가 전부 막힌다.
 
-# 미푸시 커밋이 '스테이징 스크립트 자신이 만든 것' 뿐인가.
+# <ref> 의 package.json 에 기록된 version. 못 읽으면 무출력.
+pkg_version_at() {
+  git show "$1:package.json" 2>/dev/null | grep -m1 '"version"' \
+    | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+}
+
+# 미푸시 커밋이 '배포해도 안전한 것' 뿐인가.
 #
-# 판정은 좁게 — is_resumed_finish 와 같은 방식으로 first-parent 체인의 모든 커밋이 아래
-# 둘 중 하나여야 하고, 하나라도 어긋나면 실패한다. 사람이 staging 에 직접 커밋한 것을
-# 재실행으로 오인하면 리뷰·CI 를 거치지 않은 커밋이 그대로 스테이징에 배포된다.
+# 지키려는 불변식은 하나다 — **새로 나가는 내용은 이미 origin 에 있는 것뿐이다.**
+# first-parent 체인의 모든 커밋이 아래 둘 중 하나여야 하고, 하나라도 어긋나면 실패한다.
+# 사람이 staging 에 직접 커밋한 것을 재실행으로 오인하면 리뷰·CI 를 거치지 않은 커밋이
+# 그대로 스테이징에 배포된다.
 #
-#   1) merge-staging.sh 의 머지 커밋 — "Merge branch '<X>' into <BR>" 형식이고,
-#      2번째 부모가 origin 의 어느 remote-tracking 브랜치에서 도달 가능할 것
-#      (= 머지된 내용 자체는 이미 push 됐다. 아니면 미푸시 작업이 묻어 나간다)
+#   1) 머지 커밋 — 2번째 부모가 origin 의 어느 remote-tracking 브랜치에서 도달 가능할 것.
+#      그러면 그 머지가 들여온 내용은 전부 이미 push 된 것이다. 반대로 로컬에만 있는
+#      브랜치를 머지한 커밋은 미푸시 작업을 묻혀 나가므로 걸러진다.
 #   2) bump 커밋 — "chore: staging deploy <ver>", <ver> 는 <BR> tip 의 package.json 과 일치
+#
+# 커밋 '제목' 으로 머지를 판정하지 않는다(FE-1046) — merge-staging.sh 의 머지는
+# "Merge branch '<X>' into <BR>" 이지만 git pull 이 만드는 머지는
+# "Merge branch '<X>' of <url>" 로 형식이 달라, 제목을 보면 정상적인 pull 후 재실행이
+# 차단된다(실측). 부모 도달 가능성이 형식과 무관하게 같은 보증을 준다.
 #
 # 2번째 부모로 들어온 커밋들은 1) 이 보증하므로 first-parent 체인만 본다.
 # 버전은 워킹트리가 아니라 <BR> tip 에서 읽는다 — merge-staging.sh 는 staging 으로
 # switch 하기 전(=작업 브랜치 위)에서 이 검사를 호출한다.
 staging_ahead_is_ours() {
-  local BR="$1" SHA SUBJ VER P2
-  VER="$(git show "${BR}:package.json" 2>/dev/null | grep -m1 '"version"' \
-    | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  local BR="$1" SHA VER EXTRA_PARENTS PARENT
+  VER="$(pkg_version_at "${BR}")"
   [ -n "${VER}" ] || return 1
   while IFS= read -r SHA; do
     [ -z "${SHA}" ] && continue
-    SUBJ="$(git log -1 --format=%s "${SHA}")"
-    [ "${SUBJ}" = "chore: staging deploy ${VER}" ] && continue
-    case "${SUBJ}" in
-      "Merge branch '"?*"' into ${BR}")
-        P2="$(git rev-parse -q --verify "${SHA}^2" 2>/dev/null || true)"
-        [ -n "${P2}" ] || return 1
-        [ -n "$(git branch -r --contains "${P2}" 2>/dev/null)" ] || return 1
-        ;;
-      *) return 1 ;;
-    esac
+    # bump 커밋
+    [ "$(git log -1 --format=%s "${SHA}")" = "chore: staging deploy ${VER}" ] && continue
+    # 머지 커밋 — 1번째를 뺀 모든 부모가 origin 에서 도달 가능해야 한다.
+    # rev-list --parents 의 1번째 필드는 커밋 자신, 2번째가 부모1 이다.
+    EXTRA_PARENTS="$(git rev-list --parents -1 "${SHA}" | cut -d' ' -f3-)"
+    [ -n "${EXTRA_PARENTS}" ] || return 1           # 부모가 하나 = 일반 커밋
+    for PARENT in ${EXTRA_PARENTS}; do
+      [ -n "$(git branch -r --contains "${PARENT}" 2>/dev/null)" ] || return 1
+    done
   done < <(git rev-list --first-parent "origin/${BR}..${BR}")
+  return 0
+}
+
+# origin/<BR>..<BR> 에서 '이 버전의 미푸시 bump 커밋' 을 찾아 SHA 를 출력한다(없으면 무출력).
+# 있으면 호출부는 bump·changelog·커밋을 건너뛰고 push 로 진행한다 — 안 그러면 중단된 배포를
+# 이어받을 때마다 patch 가 한 번 더 올라간다(merge-staging.sh 의 실패 안내가 유도했던 경로).
+#
+# 판정은 좁게 — 넷을 모두 만족할 때만. 사람이 흉내낸 커밋을 재실행으로 오인하면 버전이
+# 오르지 않은 채 배포되고, 다음 배포가 같은 번호를 다시 쓴다.
+#   1) 제목이 "chore: staging deploy <ver>" 와 정확히 일치
+#   2) <ver> 가 <BR> tip 의 package.json 버전과 일치
+#   3) 미푸시 — origin/<BR>..<BR> 범위 안에 있다 (이미 push 됐으면 지난 배포다)
+#   4) 그 커밋이 실제로 version 을 <ver> 로 올렸다 — 부모의 버전이 다르다
+#      (4 는 빈 커밋이나 제목만 흉내낸 커밋을 걸러낸다)
+#
+# 범위는 first-parent 체인만 본다 — 우리 bump 커밋은 항상 staging 의 first-parent 위에
+# 있고(git pull 의 머지도 1번째 부모가 로컬 쪽이다), 머지로 들여온 남의 커밋을 잡지 않는다.
+staging_unpushed_bump() {
+  local BR="$1" VER SHA
+  VER="$(pkg_version_at "${BR}")"
+  [ -n "${VER}" ] || return 0
+  while IFS= read -r SHA; do
+    [ -z "${SHA}" ] && continue
+    [ "$(git log -1 --format=%s "${SHA}")" = "chore: staging deploy ${VER}" ] || continue
+    [ "$(pkg_version_at "${SHA}")" = "${VER}" ] || continue
+    [ "$(pkg_version_at "${SHA}^")" = "${VER}" ] && continue
+    printf '%s' "${SHA}"
+    return 0
+  done < <(git rev-list --first-parent "origin/${BR}..${BR}" 2>/dev/null)
   return 0
 }
 

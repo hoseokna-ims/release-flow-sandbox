@@ -4,7 +4,7 @@
 릴리스 스크립트를 건드렸다면 머지 전에 돌리세요.
 
 ```bash
-yarn test:release-flow                 # 전체 (242건, 약 1~2분)
+yarn test:release-flow                 # 전체 (298건, 약 2분)
 bash scripts/test/ahead-policy.sh      # 하나만
 ```
 
@@ -41,6 +41,7 @@ SRC=/path/to/imsform-mobile-web yarn test:release-flow
 | `guards.sh` | 17 | pre-push 태그 동반·계보 검사 · worktree 점유 차단 · `topic_merge_and_tag` checkout 실패 처리 · 이식성(`sh` 호출 금지, `dash -n`) |
 | `staging-rollback.sh` | 68 | 스테이징 경로 롤백 · push 실패 원인 3분기 · 중단 후 재개 · 롤백하면 안 되는 두 경로 |
 | `staging-ahead.sh` | 60 | 로컬 `staging/*` ahead·diverged 차단 · 재실행 예외 3조건 · behind 정책 · 새 클론 회귀 |
+| `staging-idempotent.sh` | 56 | bump 멱등화 · 판정 4조건(직접 호출) · pull 머지 위 재실행 · 내용 변경 시 bump 유지 |
 | `lib/harness.sh` | — | 픽스처·git 셔임·단언 헬퍼(`fixture_staging`, `expect_ver`, `ver_of` …) |
 | `run-all.sh` | — | 전체 실행 + 합계 |
 

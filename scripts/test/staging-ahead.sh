@@ -76,11 +76,14 @@ expect_has "RELEASE_ASSUME_YES=1 로 자동 승인"
 git fetch -q origin --prune
 expect_same staging/0.1 origin/staging/0.1
 expect_unpushed 0 staging/0.1
-# ⚠️ 이 경로는 버전이 두 번 오른다(0.1.0 → 0.1.1 → 0.1.2). 가드는 목록 + 확인으로
-#    사용자에게 보여주지만 막지는 않는다(#36 의 예외 설계). 멱등화는 FE-1046 범위 —
-#    FE-1046 이 merge-staging.sh 의 bump 까지 다루면 아래 두 단언이 0.1.1 / 1개로 바뀐다.
+# 버전이 두 번 오른다(0.1.0 → 0.1.1 → 0.1.2). FE-1046 검토 결과 이건 격차가 아니라
+# 의도된 동작이다 — 미푸시 bump(0.1.1) 위에 **새 머지가 얹혔으므로 내용이 달라졌다.**
+# 여기서 bump 를 건너뛰면 0.1.1 시점에 생성된 STAGING_CHANGELOG.md 가 그대로 배포되어
+# 새로 머지된 내용이 누락된다. 배포된 적 없는 patch 번호 하나를 소비하는 편이 낫다.
+# FE-1046 이 닫은 것은 "내용이 그대로인데 두 번 오르는" 경우다
+# (staging-idempotent.sh D7 = skip, D8 = 이 케이스와 같은 상황이라 skip 하지 않음).
 expect_ver 0.1.2
-[ "$(count_in origin/staging/0.1 'chore: staging deploy')" -eq 2 ]; ok "bump 커밋 2개 (FE-1046 이 닫을 격차)" $?
+[ "$(count_in origin/staging/0.1 'chore: staging deploy')" -eq 2 ]; ok "bump 커밋 2개 (내용이 달라졌으므로 의도된 동작)" $?
 
 # ══ A4  ahead 없음 → 경고 미출력 ══════════════════════════════════════
 case_hdr "A4  ahead 없음 → 정상 완주, 가드 문구 미출력 (부재 단언)"
