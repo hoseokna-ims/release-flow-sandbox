@@ -132,23 +132,32 @@ done
 #   · 미푸시 커밋도 없다      → 이미 전부 반영된 브랜치. 버전만 올라가는 빈 배포이므로
 #                               의도한 재배포일 수 있어 차단하지 않고 확인만 받는다.
 #   · 미푸시 커밋이 남아 있다 → 중단된 실행(kill·Ctrl-C·크래시. set -e 의 ERR 트랩은
-#                               시그널에 걸리지 않는다)이 만든 머지 커밋이다. 여기서
-#                               "이미 반영됨" 경고를 띄우면 사용자는 중단을 택하고
-#                               머지 커밋이 push 되지 않은 채 영구히 남는다.
-# 미푸시 bump 커밋이 섞여 있으면 재개로 보지 않는다 — 그건 ⑥ 이후에서 죽은 상태이고
-# 이어서 bump 하면 버전이 두 번 오른다(멱등화는 FE-1046 범위).
-if [ "$(git rev-list --count "${MERGE_BASE_TIP}..HEAD")" -eq 0 ]; then
-  UNPUSHED_SUBJECTS="$(git log --format=%s "origin/${LATEST}..HEAD" 2>/dev/null || true)"
-  if [ -n "${UNPUSHED_SUBJECTS}" ] && ! printf '%s\n' "${UNPUSHED_SUBJECTS}" \
-    | grep -qE '^chore: staging deploy [0-9]+\.[0-9]+\.[0-9]+$'; then
+#                               시그널에 걸리지 않는다)이 만든 것이다. 여기서 "이미 반영됨"
+#                               경고를 띄우면 사용자는 중단을 택하고 그 커밋들이 push 되지
+#                               않은 채 영구히 남는다.
+NEW_COMMITS="$(git rev-list --count "${MERGE_BASE_TIP}..HEAD")"
+if [ "${NEW_COMMITS}" -eq 0 ]; then
+  if [ -n "$(git log --format=%s "origin/${LATEST}..HEAD" 2>/dev/null || true)" ]; then
     echo "ℹ️  중단된 실행의 재개입니다 — 머지는 이미 로컬에 있고 아직 push 되지 않았습니다:"
     git log --oneline "origin/${LATEST}..HEAD" | sed 's/^/     /'
-    echo "   이어서 bump·push 를 진행합니다."
+    echo "   이어서 push 를 진행합니다."
   else
     echo "⚠️  머지로 추가된 새 커밋이 없습니다 — 이미 ${LATEST} 에 반영된 브랜치입니다."
     echo "   계속하면 변경 없이 patch 만 올라가는 빈 배포가 됩니다."
     confirm "   그래도 배포할까요?"
   fi
+fi
+
+# 멱등: ⑥ push 도중에 죽으면 미푸시 bump 커밋이 남는다. 그 상태로 재실행하면 같은 내용에
+# patch 가 한 번 더 올라갔다(FE-1044 가 재개 대상에서 제외해 둔 경로).
+#
+# 건너뛰는 조건은 "push 할 트리가 그 bump 커밋이 기술한 그대로일 때" 로 좁힌다 —
+# 머지가 새 커밋을 추가했다면 내용이 달라졌으므로 그대로 bump 한다. 그래야
+# STAGING_CHANGELOG.md 가 실제 배포 내용과 맞는다(배포된 적 없는 patch 번호 하나를
+# 소비하는 것은 스테이징 라인에서 무해하다).
+RESUME_BUMP=""
+if [ "${NEW_COMMITS}" -eq 0 ]; then
+  RESUME_BUMP="$(staging_unpushed_bump "${LATEST}")"
 fi
 
 # ⑤ 첫 파괴적 변경. 여기서 실패하면(bump·changelog·커밋 훅 거부 등) 머지 커밋까지
@@ -157,16 +166,23 @@ trap 'rollback_baseline_ref; restore_branch;
       echo "❌ 버전 bump·커밋 단계가 실패했습니다 — ${LATEST} 를 시작 상태로 되돌렸습니다(머지·bump 커밋 없음)." >&2;
       echo "   → 위 원인을 해결한 뒤 같은 명령을 다시 실행하세요: yarn staging:merge ${BRANCHES[*]}" >&2' ERR
 BEFORE="$(node -p "require('./package.json').version")"
-node scripts/bump-version.mjs patch >/dev/null
-AFTER="$(node -p "require('./package.json').version")"
-node scripts/changelog.mjs "${AFTER}" --staging   # STAGING_CHANGELOG.md 재생성 (라인 스냅샷)
-git add package.json
-[ -f package-lock.json ] && git add package-lock.json || true
-[ -f CHANGELOG.md ] && git add CHANGELOG.md || true
-[ -f STAGING_CHANGELOG.md ] && git add STAGING_CHANGELOG.md || true
-git commit -qm "chore: staging deploy ${AFTER}"
+AFTER="${BEFORE}"
+if [ -n "${RESUME_BUMP}" ]; then
+  echo "ℹ️  미푸시 bump 커밋이 이미 있어 bump·changelog·커밋을 건너뜁니다 (버전 ${AFTER} 유지):"
+  git log -1 --oneline "${RESUME_BUMP}" | sed 's/^/     /'
+else
+  node scripts/bump-version.mjs patch >/dev/null
+  AFTER="$(node -p "require('./package.json').version")"
+  node scripts/changelog.mjs "${AFTER}" --staging   # STAGING_CHANGELOG.md 재생성 (라인 스냅샷)
+  # 산출물만 스테이징한다. package-lock.json 분기는 이 리포(yarn)에 존재하지 않아 죽은
+  # 코드였다 — 고정 목록은 없는 파일 하나로 전체가 실패하는 함정이 된다(#40).
+  git add package.json
+  [ -f CHANGELOG.md ] && git add CHANGELOG.md || true
+  [ -f STAGING_CHANGELOG.md ] && git add STAGING_CHANGELOG.md || true
+  git commit -qm "chore: staging deploy ${AFTER}"
+  echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
+fi
 trap - ERR
-echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
 
 # ⑥ push — pre-push 훅이 여기서 처음 콘텐츠 검사(tsc·test)를 돌린다.
 #    출력을 버퍼링하는 이유: 실패 원인 판정 전에 훅이 낸 실패 내용을 먼저 보여줘야 한다.
