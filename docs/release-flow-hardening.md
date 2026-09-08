@@ -223,6 +223,59 @@ restore_branch() { git switch "${ORIG_BRANCH}" >/dev/null 2>&1 || true; }
 회귀 케이스(R7 머지 충돌·R8 정상 완주)는 양쪽 통과. 수정 전 R1 재현 상태가 사건과 일치한다
 (미푸시 3커밋 · 버전 이미 0.1.1 · HEAD staging 잔류).
 
+### 4.2.2 로컬 `staging/*` ahead 가드 (FE-1045)
+
+**문제(실측)**: `merge-staging.sh` 의 사전검사는 **대상 브랜치**의 미푸시 커밋만 본다. 로컬
+`staging/*` 자체는 아무도 보지 않으며, `git pull origin <staging>` 은 ahead 상태를
+fast-forward 로 조용히 통과시킨다. `deploy-staging.sh` 도 clean tree 만 본다.
+§5.1 의 ahead 정책이 **release/hotfix 전용으로만** 적용돼 있었다.
+
+결과: 사람이 `staging/*` 에 직접 만든 커밋이 리뷰·CI 없이 배포되고, 사고 잔여 상태
+(로컬 staging 이 ahead)에서 재실행하면 그 위에 또 bump 가 얹혀 미푸시 bump 커밋이 한 번에
+push 된다. 수정 전 실측: 사용자 커밋이 bump 와 함께 원격에 올라가고(A1), 재실행 2회로
+버전이 `0.1.0 → 0.1.3` 까지 뛴다(A3).
+
+**설계** — `require_staging_synced <branch> [pull|block]` 신규.
+
+`require_synced` 를 그대로 쓰지 않는 이유는 **behind 처리가 반대**이기 때문이다.
+release/hotfix 는 behind 를 차단해야 하지만 `merge-staging.sh` 는 곧바로 `git pull` 한다 —
+behind 차단을 그대로 쓰면 "원격이 앞선 staging 에 머지" 라는 정상 플로우가 전부 막힌다.
+그래서 behind 정책을 호출부가 정한다.
+
+| 호출부 | 위치 | behind | 근거 |
+|---|---|---|---|
+| `merge-staging.sh` | `git switch` 전 (=첫 변경 전) | `pull` — 통과 | 바로 아래 `git pull` 이 받아온다 |
+| `deploy-staging.sh` | bump 전 | `block` — 차단 | pull 하지 않으므로 push 가 반드시 거부된다. 첫 파괴적 변경 전에 잡는다(P1) |
+
+`require_synced` 와 달리 **로컬 브랜치가 없으면 통과**시킨다 — 새 클론에서 첫 배포를 하면
+로컬 `staging/*` 이 없고 `git switch` 가 origin 에서 만든다. 그대로 재사용하면
+"❌ 로컬 브랜치가 없습니다" 로 죽는다(A7).
+
+**예외 판정 `staging_ahead_is_ours`** — §5.1 의 `is_resumed_finish` 와 같은 방식으로,
+first-parent 체인의 **모든** 커밋이 아래 둘 중 하나여야 하고 하나라도 어긋나면 차단한다.
+
+| 조건 | 배제하는 오인 |
+|---|---|
+| `Merge branch '<X>' into <BR>` 형식 + **2번째 부모가 origin 의 어느 remote-tracking 브랜치에서 도달 가능** | 미푸시 로컬 브랜치를 머지한 커밋 — 그 작업이 묻어 나간다(A9b) |
+| `chore: staging deploy <ver>` + `<ver>` 가 `<BR>` tip 의 `package.json` 과 일치 | 사람이 형식만 흉내낸 커밋(A9) |
+
+2번째 부모로 들어온 커밋들은 첫 조건이 보증하므로 first-parent 체인만 본다. 버전은 워킹트리가
+아니라 `<BR>` tip 에서 읽는다 — `merge-staging.sh` 는 staging 으로 switch 하기 전에 호출한다.
+
+**머지 커밋을 예외에 포함한 이유**: §4.2.1(FE-1044)의 재개 경로가 만드는 상태가 정확히
+"미푸시 머지 커밋" 이다. bump 커밋만 예외로 두면 그 재개 경로가 죽는다(A8 = R5 회귀).
+
+**예외에도 목록 + 확인을 거친다**(§5.1 과 동일). 그래서 §4.2.1 의 중단 후 재실행은 이제
+확인 프롬프트를 한 번 지난다 — 비대화형에서는 `RELEASE_ASSUME_YES=1` 이 필요하다.
+
+> **남은 격차**: 예외를 통과한 뒤에도 `merge-staging.sh` 는 bump 를 한 번 더 한다
+> (`0.1.0 → 0.1.1 → 0.1.2`). 가드는 목록 + 확인으로 보여주지만 막지 않는다.
+> 멱등화는 FE-1046 범위이고, 그쪽이 `deploy-staging.sh` 뿐 아니라 **`merge-staging.sh` 의
+> bump 까지** 다뤄야 이 경로가 닫힌다.
+
+**검증**: `scripts/test/staging-ahead.sh` 60건. 음성 대조(FE-1045 직전 `7acbdcc` 를 `SRC`)
+→ 신규 26건 실패, 회귀 케이스(A4 ahead 없음 · A6 behind · A7 새 클론)는 양쪽 통과.
+
 ### 4.3 `deploy-staging.sh` — 최신 라인 가드 (#3)
 
 **문제(실측)**: 옛 라인 `staging/0.20` 체크아웃 상태에서 실행하면 그대로 배포되어 **`staging` 태그가 옛 코드로 이동** (스테이징 서버 교체).

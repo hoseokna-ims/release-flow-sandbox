@@ -17,30 +17,8 @@
 source "$(dirname "$0")/lib/harness.sh"
 harness_init staging-rollback
 
-# ── 케이스 전용 단언 ──────────────────────────────────────────────────
-# 버전은 워킹트리가 아니라 '커밋된 staging tip' 에서 읽는다 — 성공 경로는 HEAD 를
-# 작업 브랜치로 되돌려 놓으므로 워킹트리 package.json 은 bump 되지 않은 값이다.
-ver_of() {
-  git show "$1:package.json" 2>/dev/null \
-    | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
-}
-# 상태는 먼저 변수로 받는다 — 설명 안의 명령치환이 $? 를 덮어쓴다(harness.sh 주석 참고).
-expect_ver() {
-  local BR="${2:-staging/0.1}" ACTUAL ST_
-  ACTUAL="$(ver_of "${BR}")"
-  [ "${ACTUAL}" = "$1" ]; ST_=$?
-  ok "${BR} 버전 = $1 (실제: ${ACTUAL})" "${ST_}"
-}
-expect_unpushed() {
-  local ACTUAL ST_
-  ACTUAL="$(git rev-list --count "origin/$2..$2")"
-  [ "${ACTUAL}" = "$1" ]; ST_=$?
-  ok "$2 미푸시 커밋 ${1}개 (실제: ${ACTUAL})" "${ST_}"
-}
-expect_clean_tree() { [ -z "$(git status --porcelain --untracked-files=no)" ]; ok "워킹트리 클린" $?; }
+# ── 케이스 전용 단언 (공용 헬퍼는 lib/harness.sh) ─────────────────────
 expect_rolled_back(){ [ "$(git rev-parse "$2")" = "$1" ]; ok "$2 == pull 후 SHA (롤백 완료)" $?; }
-remote_sha()        { git ls-remote origin "refs/heads/$1" | cut -f1; }
-count_in()          { git log --oneline "$1" | grep -cF "$2"; }
 
 # ══ R1 · R4  pre-push 훅 거부 ═════════════════════════════════════════
 case_hdr "R1  pre-push 거부 → 롤백 (bump 커밋 미생성 · 원격 무변경 · ORIG_BRANCH 복귀)"
@@ -116,8 +94,11 @@ head_is staging/0.1
 [ "$(count_in origin/staging/0.1..staging/0.1 'chore: staging deploy')" -eq 0 ]; ok "미푸시 bump 커밋 없음" $?
 expect_clean_tree
 expect_ver 0.1.0
-run "bash scripts/merge-staging.sh feature/FE-X"
+# FE-1045 부터 미푸시 커밋은 require_staging_synced 의 확인을 거친다 — 재개 상태도
+# 예외로 통과시키되 목록 + 확인을 받으므로(#36 설계), 비대화형에서는 자동 승인이 필요하다.
+run "RELEASE_ASSUME_YES=1 bash scripts/merge-staging.sh feature/FE-X"
 expect_success
+expect_has "중단된 스테이징 배포의 재실행으로 보입니다"
 expect_has "중단된 실행의 재개입니다"
 expect_absent "머지로 추가된 새 커밋이 없습니다"   # 부재 단언 — 오작동 경고 제거
 expect_absent "빈 배포"                            # 부재 단언

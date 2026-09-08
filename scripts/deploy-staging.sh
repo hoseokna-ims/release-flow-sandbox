@@ -9,6 +9,7 @@
 #
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
+source scripts/lib/checks.sh
 
 FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
@@ -38,6 +39,13 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "❌ 커밋 안 된 변경이 있습니다. (feature 머지 후 커밋 완료 상태에서 실행하세요)"
   exit 1
 fi
+
+# 미푸시 커밋 가드 — bump(첫 파괴적 변경) 전에 끝낸다. merge-staging.sh 와 같은 구멍이었다.
+# 이 스크립트는 pull 하지 않으므로 behind 도 차단한다 — 그대로 두면 bump·커밋을 만든 뒤
+# push 가 반드시 거부되고, 그 안내를 따라 pull 하면 다음 실행이 patch 를 또 올린다.
+# --force 경로는 fetch 를 건너뛰므로 여기서 대상 브랜치만 따로 최신화한다.
+git fetch -q origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}" 2>/dev/null || true
+require_staging_synced "${BRANCH}" block
 
 BEFORE="$(node -p "require('./package.json').version")"
 node scripts/bump-version.mjs patch >/dev/null
