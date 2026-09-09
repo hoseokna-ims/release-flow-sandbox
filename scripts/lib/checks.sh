@@ -479,6 +479,24 @@ pkg_version_at() {
     | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
 }
 
+# 이 커밋이 스크립트 산출물만 건드렸는가 — bump 커밋 판정의 마지막 조건.
+#
+# 제목·버전만 맞춘 커밋에 애플리케이션 변경을 함께 담으면, 그것을 "우리 bump" 로 승인하는
+# 순간 리뷰·CI 를 거치지 않은 코드가 스테이징에 실려 나간다. 제목은 흉내낼 수 있지만
+# "무엇을 바꿨는가" 는 흉내낼 수 없으므로 경로로 확정한다.
+# package-lock.json 은 지금 스크립트가 만들지 않지만, 옛 판이 만든 bump 커밋에는 들어 있어
+# 허용 목록에 남긴다(그 자체도 스크립트 산출물이다).
+staging_bump_paths_ok() {
+  local SHA="$1" PATHS
+  PATHS="$(git show --name-only --format= "${SHA}" 2>/dev/null | sed '/^$/d')"
+  [ -n "${PATHS}" ] || return 1   # 빈 커밋(또는 머지) — bump 가 아니다
+  if printf '%s\n' "${PATHS}" \
+    | grep -qvE '^(package\.json|package-lock\.json|CHANGELOG\.md|STAGING_CHANGELOG\.md)$'; then
+    return 1                      # 허용 목록 밖의 경로가 하나라도 있다
+  fi
+  return 0
+}
+
 # 미푸시 커밋이 '배포해도 안전한 것' 뿐인가.
 #
 # 지키려는 불변식은 하나다 — **새로 나가는 내용은 이미 origin 에 있는 것뿐이다.**
@@ -505,8 +523,12 @@ staging_ahead_is_ours() {
   [ -n "${VER}" ] || return 1
   while IFS= read -r SHA; do
     [ -z "${SHA}" ] && continue
-    # bump 커밋
-    [ "$(git log -1 --format=%s "${SHA}")" = "chore: staging deploy ${VER}" ] && continue
+    # bump 커밋 — 제목·버전에 더해 '스크립트 산출물만 건드렸는가' 까지 본다.
+    # 제목만 보면 애플리케이션 변경을 얹은 커밋이 우리 것으로 승인된다(Codex 리뷰 P2).
+    if [ "$(git log -1 --format=%s "${SHA}")" = "chore: staging deploy ${VER}" ] \
+      && staging_bump_paths_ok "${SHA}"; then
+      continue
+    fi
     # 머지 커밋 — 1번째를 뺀 모든 부모가 origin 에서 도달 가능해야 한다.
     # rev-list --parents 의 1번째 필드는 커밋 자신, 2번째가 부모1 이다.
     EXTRA_PARENTS="$(git rev-list --parents -1 "${SHA}" | cut -d' ' -f3-)"
@@ -528,6 +550,7 @@ staging_ahead_is_ours() {
 #   2) <ver> 가 <BR> tip 의 package.json 버전과 일치
 #   3) 미푸시 — origin/<BR>..<BR> 범위 안에 있다 (이미 push 됐으면 지난 배포다)
 #   4) 그 커밋이 실제로 version 을 <ver> 로 올렸다 — 부모의 버전이 다르다
+#   5) 스크립트 산출물(package.json·CHANGELOG·STAGING_CHANGELOG)만 건드렸다
 #      (4 는 빈 커밋이나 제목만 흉내낸 커밋을 걸러낸다)
 #
 # 범위는 first-parent 체인만 본다 — 우리 bump 커밋은 항상 staging 의 first-parent 위에
@@ -541,6 +564,7 @@ staging_unpushed_bump() {
     [ "$(git log -1 --format=%s "${SHA}")" = "chore: staging deploy ${VER}" ] || continue
     [ "$(pkg_version_at "${SHA}")" = "${VER}" ] || continue
     [ "$(pkg_version_at "${SHA}^")" = "${VER}" ] && continue
+    staging_bump_paths_ok "${SHA}" || continue   # 산출물 외 경로가 섞이면 우리 bump 가 아니다
     printf '%s' "${SHA}"
     return 0
   done < <(git rev-list --first-parent "origin/${BR}..${BR}" 2>/dev/null)

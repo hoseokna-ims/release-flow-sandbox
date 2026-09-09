@@ -468,6 +468,79 @@ gitignore 라 라인을 전환해도 이전 라인의 것이 그대로 남는다
 경로) 2건. 음성 대조(FE-1047 직전 `827edd3` 를 `SRC`) → 신규 22건 실패, 회귀 케이스
 (E2 일치 · E4 문구 부재 · E8b Berry 일치 · E9 락파일 없음 · E9b PnP)는 양쪽 통과.
 
+### 4.2.5 이식이 드러낸 것들 — imsform 역이식 (FE-1048)
+
+FE-1044~1047 을 `imsform-mobile-web` 에 이식하면서 네 가지가 드러났다. 셋은 이 저장소의 결함이고
+하나는 이식 과도기에만 생기는 조건인데, 신규 스크립트를 추가할 때마다 재발하므로 여기서 닫는다.
+
+**① switch 이후 실행되는 리포 파일은 그 라인에 없을 수 있다**
+
+`merge-staging.sh` 는 실행 도중 `git switch "${LATEST}"` 로 staging 라인으로 넘어간다. 그 이후에
+호출하는 리포 파일(`node scripts/*.mjs`, `bash scripts/*.sh`)은 **전환된 라인의 판**이다. 신규
+스크립트는 아직 그 라인에 머지되지 않았으므로 존재하지 않는다.
+
+실측(imsform, 2026-09): 이식 커밋이 feature 브랜치에만 있는 상태로 `yarn staging:merge` 를 돌리자
+`check-install-sync.mjs` 가 `MODULE_NOT_FOUND`(exit 1)로 죽었고, 호출부가 그것을 '설치 스큐' 로
+오인해 `yarn install` 을 안내했다 — 설치로는 고쳐지지 않는 문제인데도.
+
+- **존재 가드 + 경고 한 줄 후 계속.** 차단은 답이 아니다 — 그 파일을 추가하는 이식 머지 자체가
+  영원히 막힌다(닭-달걀). 무음 skip 도 아니다: 가드 없이 배포된다는 사실은 보여야 한다.
+- 전환 **전에** source 되는 `scripts/lib/checks.sh` 는 메모리에 있으므로 이 규칙의 대상이 아니다.
+
+**② 검사기 종료 코드 계약 — `0` / `3` / 그 외**
+
+node 는 예외·문법 오류·`MODULE_NOT_FOUND` 를 **모두 exit 1** 로 끝낸다(공식 문서: *"By default,
+Node.js prints the stack trace to stderr and exits with code 1"*; 핸들러를 달면 종료 코드를
+바꿀 수 있다). 스큐 판정을 1 로 두면 "검사기가 깨진 경우" 와 구분되지 않아, 검사기가 고장 나도
+사용자가 `yarn install` 을 안내받고 헛수고한다.
+
+| 코드 | 뜻 | 호출부 |
+|---|---|---|
+| `0` | 이상 없음(또는 판정 대상 아님) | 계속 |
+| `3` | 스큐 확정 | `yarn install` 안내 후 차단 |
+| 그 외 | 검사기 자체 실패 | "설치 문제가 아니다" 안내 후 차단 |
+
+`check-install-sync.mjs` 는 `uncaughtException` 을 잡아 exit 2 로 끝내고, node 가 그냥 죽는 경우(1)도
+같은 분기로 흐른다.
+
+**③ `deploy-staging.sh` 의 비대칭 해소**
+
+FE-1044 는 `merge-staging.sh` 만 고쳤다. `deploy-staging.sh` 에는 모든 push 실패에
+`원격이 앞섬 + git pull --no-rebase` 를 출력하는 옛 문구가 남아 있었다 — 이중 bump 를 유도했던
+바로 그 문장이다(FE-1046 의 멱등화로 피해는 닫혔지만 진단은 여전히 틀린다). 또 FE-1047 이
+"deploy 는 라인을 전환하지 않으므로" 설치 검사를 제외했는데, 사용자는 `git switch staging/<라인>` 을
+손으로 한 뒤 이 명령을 실행한다 — 같은 스큐원이다. 둘 다 merge 쪽과 동일하게 맞춘다.
+
+**④ push 실패 판정에서 dry-run 은 마지막 폴백이다**
+
+`git push --dry-run` 은 ref 를 실제로 보내지 않으므로 **원격 `pre-receive` 훅·브랜치 보호가 돌지
+않는다.** 즉 원격이 거부하는 상황에서도 탐침은 성공하고, 그것을 로컬 훅 실패로 오분류한다.
+`--no-verify` 는 문서상 **클라이언트 pre-push 만** 우회한다.
+
+판정 순서를 값싸고 확실한 신호부터로 바꾼다:
+
+1. `remote rejected` · `pre-receive hook declined` · `protected branch` → 원격 거부 확정
+2. `husky - pre-push` 마커 → 로컬 훅 거부 확정
+3. dry-run(`--no-verify`) 탐침 → 성공하면 로컬 훅
+4. 원격 tip 이 계보 밖 → non-fast-forward
+5. 그 외
+
+**⑤ bump 커밋 판정에 경로를 넣는다**
+
+`staging_ahead_is_ours` 의 bump 분기가 제목만 봤다. 제목·버전만 맞춘 커밋에 애플리케이션 변경을
+얹으면 '우리 것' 으로 승인돼, 리뷰·CI 를 거치지 않은 코드가 확인 프롬프트 하나만 지나 배포된다.
+제목은 흉내낼 수 있어도 **무엇을 바꿨는가는 흉내낼 수 없으므로** 경로로 확정한다 —
+`package.json`·`package-lock.json`·`CHANGELOG.md`·`STAGING_CHANGELOG.md` 밖의 경로가 하나라도
+있으면 거부한다(`staging_unpushed_bump` 도 같은 조건을 받는다). 부수 효과로 빈 커밋도 걸린다.
+
+**검증**: 하네스 360 → **391건**. 신규 A11·A11b(경로 검사) · R11(원격 거부 분류) · E11·E12·E12b
+(존재 가드·종료 코드) · B6(실행 중 switch 와 스크립트 자기 자신). imsform 쪽에서 동일 391건으로
+먼저 검증한 뒤 역이식했다.
+
+> **되돌리지 않은 것**: imsform 에는 `merge-staging.sh` 에 라우터 생성물 재생성 단계가 있다
+> (`plugins/routePathGenerator.mjs`, gitignore 된 생성물이라 라인 전환 시 낡은 채로 남는다).
+> 이 저장소에는 생성기가 없어 죽은 코드가 되므로 가져오지 않았다. ① 의 규칙만 공유한다.
+
 ### 4.3 `deploy-staging.sh` — 최신 라인 가드 (#3)
 
 **문제(실측)**: 옛 라인 `staging/0.20` 체크아웃 상태에서 실행하면 그대로 배포되어 **`staging` 태그가 옛 코드로 이동** (스테이징 서버 교체).

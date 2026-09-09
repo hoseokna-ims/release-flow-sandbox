@@ -34,6 +34,33 @@ import { execFileSync } from 'node:child_process';
 const read = (path) => readFileSync(path, 'utf8');
 const out = (text) => process.stdout.write(text);
 
+/**
+ * 검사기 자체가 실패하면 exit 2 로 끝낸다 — "설치 스큐(1)" 와 구분하기 위해서다.
+ *
+ * 둘을 뭉개면 검사기가 깨졌을 때도 호출부가 "yarn install 하세요" 를 안내해 사용자가
+ * 헛수고한다. 2026-09 실측: 대상 라인에 이 파일이 없어 MODULE_NOT_FOUND(exit 1)로 죽었는데
+ * 호출부가 그것을 스큐로 오인해 잘못된 안내를 냈다.
+ *
+ * ESM 최상단에서 던져진 예외도 uncaughtException 으로 잡힌다(실측).
+ */
+/**
+ * 종료 코드 계약
+ *   0  이상 없음(또는 판정 대상 아님)
+ *   3  설치 스큐 확정 — 호출부는 `yarn install` 을 안내한다
+ *   그 외(1·2 …)  검사기 자체의 실패 — 설치 문제가 아니다
+ *
+ * 스큐를 3 으로 둔 이유: node 는 예외·문법 오류·MODULE_NOT_FOUND 를 모두 exit 1 로 끝낸다.
+ * 스큐를 1 로 쓰면 "검사기가 통째로 깨진 경우" 와 구분되지 않아, 호출부가 엉뚱하게
+ * `yarn install` 을 안내한다(2026-09 실측).
+ */
+const EXIT_SKEW = 3;
+
+process.on('uncaughtException', (error) => {
+  out(`❌ 설치 정합성 검사기 자체가 실패했습니다: ${error?.message ?? error}\n`);
+  out('   설치 상태와 무관한 문제입니다 — scripts/check-install-sync.mjs 를 확인하세요.\n');
+  process.exit(2);
+});
+
 const pkg = JSON.parse(read('package.json'));
 /** dependencies + devDependencies — 선언된 것은 모두 설치돼 있어야 한다 */
 const declared = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
@@ -131,7 +158,7 @@ if (!existsSync('node_modules')) {
   out('❌ node_modules 가 없습니다 — 이 라인의 의존성이 설치되지 않았습니다.\n');
   out('   이대로 진행하면 pre-push 의 타입 검사가 내 코드와 무관한 오류를 냅니다.\n');
   out('   → yarn install 후 다시 실행하세요.\n');
-  process.exit(1);
+  process.exit(EXIT_SKEW);
 }
 
 const versionOf = parseLockfile(read('yarn.lock'));
@@ -184,4 +211,4 @@ for (const { name, want, got } of mismatches.slice(0, 10)) {
 }
 if (mismatches.length > 10) out(`     ... 외 ${mismatches.length - 10}건\n`);
 out('   → yarn install 후 다시 실행하세요.\n');
-process.exit(1);
+process.exit(EXIT_SKEW);

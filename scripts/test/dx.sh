@@ -109,4 +109,20 @@ run "bash scripts/release.sh finish"
 expect_success
 released
 
+# ══ B6  실행 중 브랜치 전환과 스크립트 자기 자신 ═══════════════════════
+# merge-staging.sh 는 실행 도중 staging 라인으로 switch 한다. 전환된 라인의 같은 파일이
+# 다르면 bash 가 두 버전을 섞어 읽는다는 우려가 제기됐으나, git switch 는 in-place 쓰기가
+# 아니라 unlink+create 이므로 실행 중인 bash 는 열어 둔 fd 로 옛 inode 를 계속 읽는다
+# (실측: switch 전후 inode 30654395 → 30655080). 이 사실을 회귀로 고정한다.
+case_hdr "B6  실행 중 git switch 로 스크립트가 바뀌어도 실행본은 바뀌지 않는다"
+fixture_staging b6
+git switch -q staging/0.1
+printf '\necho "STALE-STAGING-COPY"\n' >> scripts/merge-staging.sh
+git commit -qam "chore: staging 판 마커"
+git push -q origin staging/0.1
+git switch -q feature/FE-X
+run "bash scripts/merge-staging.sh feature/FE-X"
+expect_success
+expect_absent "STALE-STAGING-COPY"
+
 harness_summary
