@@ -210,4 +210,30 @@ expect_has "우회 조작의 흔적"
 expect_ver 0.1.0
 head_is feature/FE-X
 
+case_hdr "A11 bump 제목을 흉내냈지만 앱 파일까지 바꾼 커밋 → 차단 (경로 검사)"
+# 제목·버전만 맞추면 통과하던 구멍(Codex 리뷰 P2). 제목은 흉내낼 수 있어도 "무엇을 바꿨는가"
+# 는 흉내낼 수 없으므로, 스크립트 산출물 외의 경로가 섞이면 우리 것으로 보지 않는다.
+fixture_staging a11
+git switch -q staging/0.1
+node scripts/bump-version.mjs patch >/dev/null      # 0.1.0 → 0.1.1 (진짜 bump 처럼)
+echo "leaked" > leaked.ts                           # 리뷰·CI 를 안 거친 앱 변경
+git add -A; git commit -qm "chore: staging deploy 0.1.1"
+git switch -q feature/FE-X
+run "bash scripts/merge-staging.sh feature/FE-X"
+expect_blocked
+expect_has "우회 조작의 흔적입니다"
+expect_absent "중단된 스테이징 배포의 재실행"        # 재실행으로 오인하지 않는다
+[ "$(remote_sha staging/0.1)" = "$(git rev-parse origin/staging/0.1)" ]; ok "원격 무변경" $?
+
+case_hdr "A11b 산출물만 바꾼 진짜 bump 커밋 → 여전히 예외로 통과 (A2 회귀)"
+fixture_staging a11b
+git switch -q staging/0.1
+node scripts/bump-version.mjs patch >/dev/null
+node scripts/changelog.mjs 0.1.1 --staging >/dev/null 2>&1 || true
+git add -A; git commit -qm "chore: staging deploy 0.1.1"
+git switch -q feature/FE-X
+run "RELEASE_ASSUME_YES=1 bash scripts/merge-staging.sh feature/FE-X"
+expect_success
+expect_has "중단된 스테이징 배포의 재실행"
+
 harness_summary

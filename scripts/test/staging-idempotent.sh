@@ -84,11 +84,14 @@ fixture_staging d3c
 git switch -q staging/0.1
 git commit -q --allow-empty -m "chore: staging deploy 0.1.0"    # 제목·버전은 맞지만 빈 커밋
 [ -z "$(found_bump)" ]; ok "④ version 을 올리지 않은 커밋은 찾지 않는다" $?
-# 실제 스크립트도 이 커밋을 재실행으로 오인하지 않아야 한다
+# 실제 스크립트도 이 커밋을 재실행으로 오인하지 않아야 한다.
+# 경로 검사(Codex 리뷰 P2) 도입 후에는 ahead 가드가 먼저 막는다 — 빈 커밋은 스크립트 산출물을
+# 하나도 건드리지 않으므로 '우리 bump' 가 아니고, 설명되지 않는 staging 로컬 커밋이다.
 run "RELEASE_ASSUME_YES=1 bash scripts/deploy-staging.sh"
-expect_success
-expect_absent "건너뜁니다"                      # 부재 단언
-expect_ver 0.1.1                               # 그대로 bump 했다
+expect_blocked
+expect_has "우회 조작의 흔적입니다"
+expect_absent "건너뜁니다"                      # 부재 단언 — bump 재사용으로 오인하지 않는다
+expect_ver 0.1.0                               # bump 미실행 (첫 파괴적 변경 전에 차단)
 
 # ══ D4  이미 push 된 bump 커밋 → skip 안 함 ══════════════════════════
 case_hdr "D4  이미 push 된 bump 커밋 → skip 하지 않음 (의도한 재배포)"

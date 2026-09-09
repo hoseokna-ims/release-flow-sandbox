@@ -53,6 +53,33 @@ if [ "${FORCE}" -eq 1 ]; then
 fi
 require_staging_synced "${BRANCH}" block
 
+# 설치 정합성 사전검사 — 첫 파괴적 변경(bump) 이전.
+# 이 스크립트가 라인을 전환하지는 않지만, 사용자는 `git switch staging/<라인>` 을 손으로 하고
+# 그 자리에서 이 명령을 실행한다 — merge-staging.sh 의 switch 와 같은 스큐원이다.
+# HEAD 는 옮기지 않으므로 안내하는 yarn install 이 이 라인의 락파일 기준으로 돈다.
+#
+# 파일이 없으면 건너뛴다(merge-staging.sh 와 같은 이유 — 이식 전 라인에서도 배포는 돼야 한다).
+if [ -f scripts/check-install-sync.mjs ]; then
+  node scripts/check-install-sync.mjs && INSTALL_ST=0 || INSTALL_ST=$?
+  # 3 = 스큐 확정, 그 외 비-0 = 검사기 자체 실패(node 는 예외·문법오류를 모두 1 로 낸다)
+  case "${INSTALL_ST}" in
+    0) ;;
+    3)
+      echo "   현재 브랜치는 ${BRANCH} 입니다 — 이 라인의 락파일 기준으로 설치됩니다."
+      echo "   bump 는 시작하지 않았습니다. 설치를 맞춘 뒤 같은 명령을 다시 실행하세요:"
+      echo "     yarn install && yarn staging:deploy"
+      exit 1
+      ;;
+    *)
+      echo "   설치 상태 문제가 아닙니다 — yarn install 로는 해결되지 않습니다."
+      echo "   bump 는 시작하지 않았습니다. 검사기를 고친 뒤 다시 실행하세요."
+      exit 1
+      ;;
+  esac
+else
+  echo "ℹ️  이 라인(${BRANCH})에는 설치 정합성 검사가 아직 없습니다 — 건너뜁니다."
+fi
+
 BEFORE="$(node -p "require('./package.json').version")"
 
 # 멱등: 이 버전의 미푸시 bump 커밋이 이미 있으면 다시 만들지 않는다.
@@ -76,10 +103,51 @@ else
   echo "▶ 스테이징 버전 ${BEFORE} -> ${AFTER}"
 fi
 
-if ! git push origin "HEAD:${BRANCH}"; then
-  echo "⚠️ push 거부됨(원격이 앞섬). 'git pull --no-rebase' 후 다시 yarn staging:deploy 실행하세요."
+# push — pre-push 훅이 여기서 콘텐츠 검사(tsc·test)를 돌린다. 원인을 메시지 문구가 아니라
+# '상태' 로 판정한다(git 로케일·버전 무관). 셋을 뭉개고 모두에게 git pull 을 안내하면
+# pre-push 거부에서도 pull 이 실행되고, 그 위에 재실행이 patch 를 또 올린다(2026-09 사건).
+# 롤백하지 않는 이유: bump 커밋이 남아도 재실행이 staging_unpushed_bump 로 건너뛰므로
+# 버전이 두 번 오르지 않는다. 되돌리면 오히려 changelog 를 다시 만들어야 한다.
+if ! PUSH_OUT="$(git push origin "HEAD:${BRANCH}" 2>&1)"; then
+  printf '%s\n' "${PUSH_OUT}"
+  echo
+  # 원인 판정 — 값싼 신호부터. dry-run 은 마지막 폴백이다.
+  #   ⓐ 원격이 거부했다는 표시가 출력에 있으면 원격 문제로 확정한다. `--dry-run` 은 ref 를
+  #      실제로 보내지 않아 원격 pre-receive 훅·브랜치 보호가 돌지 않으므로, 그 경우에도
+  #      dry-run 은 성공한다 — 탐침만 믿으면 원격 거부를 로컬 훅 실패로 오분류한다(Codex 리뷰 P2).
+  #   ⓑ husky 가 낸 로컬 훅 실패 마커가 있으면 로컬 훅으로 확정한다.
+  #   ⓒ 표시가 없으면 dry-run(--no-verify) 탐침 — 성공하면 막은 것은 로컬 훅뿐이다.
+  #   ⓓ 아니면 원격 tip 이 우리 계보 밖인지 확인한다 → non-fast-forward.
+  #   ⓔ 그 외(네트워크·권한 등).
+  # 뭉개고 모두에게 'git pull' 을 안내하면 pre-push 거부에서도 pull 이 실행되고, 그 위에
+  # 재실행이 patch 를 또 올려 버전이 두 번 오른다(2026-09 사건).
+  if printf '%s' "${PUSH_OUT}" | grep -qE 'remote rejected|pre-receive hook declined|protected branch'; then
+    echo "❌ 원격이 push 를 거부했습니다 — 로컬 검사(.husky/pre-push)는 통과했습니다."
+    echo "   위 remote 출력이 원인입니다(브랜치 보호 규칙·서버 훅·권한)."
+    echo "   → 원격 설정을 확인한 뒤 같은 명령을 다시 실행하세요: yarn staging:deploy"
+    echo "     (bump 커밋은 재사용되므로 버전이 두 번 오르지 않습니다)"
+    exit 1
+  fi
+  if printf '%s' "${PUSH_OUT}" | grep -qE 'husky - pre-push|pre-push (hook|script)' \
+    || git push --no-verify --dry-run origin "HEAD:${BRANCH}" >/dev/null 2>&1; then
+    echo "❌ push 가 로컬 검사(.husky/pre-push)에 막혔습니다 — 원격은 변경되지 않았습니다."
+    echo "   위 실패 내용이 원인입니다. bump 커밋(${AFTER})은 로컬에 남아 있고, 재실행은 그것을"
+    echo "   그대로 재사용하므로 버전이 두 번 오르지 않습니다."
+    echo "   → 원인을 고친 뒤 같은 명령을 다시 실행하세요: yarn staging:deploy"
+    exit 1
+  fi
+  git fetch -q origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}" 2>/dev/null || true
+  if ! git merge-base --is-ancestor "refs/remotes/origin/${BRANCH}" HEAD 2>/dev/null; then
+    echo "❌ push 거부됨 — 원격 ${BRANCH} 가 앞서 있습니다(다른 사람이 먼저 배포했습니다)."
+    echo "   → git pull --no-rebase 후 다시 실행하세요: yarn staging:deploy"
+    echo "     (bump 커밋은 재사용되므로 버전이 두 번 오르지 않습니다)"
+    exit 1
+  fi
+  echo "❌ push 실패 — 원인은 위 출력을 확인하세요(네트워크·권한·원격 설정 등)."
+  echo "   → 원인을 해결한 뒤 같은 명령을 다시 실행하세요: yarn staging:deploy"
   exit 1
 fi
+printf '%s\n' "${PUSH_OUT}"
 
 bash scripts/push-tag.sh staging
 echo "✅ 스테이징 배포 트리거 완료 (${AFTER})"

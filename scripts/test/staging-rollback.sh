@@ -172,4 +172,25 @@ git fetch -q origin --prune
 expect_same staging/0.1 origin/staging/0.1     # 브랜치 push 는 이미 성공했다
 [ -z "$(git ls-remote --tags origin refs/tags/staging | cut -f1)" ]; ok "원격 staging 태그 미생성 (배포 미트리거)" $?
 
+case_hdr "R11 원격이 거부 → 로컬 훅 실패로 오분류하지 않는다 (dry-run 폴백의 한계)"
+# git push --dry-run 은 ref 를 실제로 보내지 않아 원격 pre-receive 훅이 돌지 않는다.
+# 즉 원격이 거부하는 상황에서도 dry-run 은 성공하므로, 탐침만 믿으면 오분류한다(Codex 리뷰 P2).
+fixture_staging r11
+BASE="$(git rev-parse staging/0.1)"
+cat > "${WORK}/r11.git/hooks/pre-receive" <<'HOOK'
+#!/bin/sh
+echo "pre-receive hook declined" >&2
+exit 1
+HOOK
+chmod +x "${WORK}/r11.git/hooks/pre-receive"
+run "bash scripts/merge-staging.sh feature/FE-X"
+expect_blocked
+expect_has "원격이 push 를 거부했습니다"
+expect_absent "로컬 검사(.husky/pre-push)에 막혔습니다"   # 오분류 금지
+expect_absent "git pull"                                  # 원격 선행도 아니다
+expect_rolled_back "${BASE}" staging/0.1
+expect_unpushed 0 staging/0.1
+head_is feature/FE-X
+rm -f "${WORK}/r11.git/hooks/pre-receive"
+
 harness_summary

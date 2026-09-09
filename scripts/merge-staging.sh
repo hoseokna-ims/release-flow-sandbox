@@ -114,11 +114,30 @@ git pull origin "${LATEST}" --no-edit
 # package.json·락파일과는 일치하므로 통과한다. 사고의 타입 에러 5건 중 4건이 이 스큐였다.
 #
 # HEAD 는 staging 에 남긴다 — 안내하는 yarn install 이 '이 라인의 락파일' 기준으로 돌아야 한다.
-if ! node scripts/check-install-sync.mjs; then
-  echo "   현재 브랜치는 ${LATEST} 입니다 — 이 라인의 락파일 기준으로 설치됩니다."
-  echo "   머지·bump 는 시작하지 않았습니다. 설치를 맞춘 뒤 같은 명령을 다시 실행하세요:"
-  echo "     yarn install && yarn staging:merge ${BRANCHES[*]}"
-  exit 1
+#
+# 파일이 그 라인에 아직 없으면 건너뛴다 — 차단하면 이 파일을 추가하는 이식 머지 자체가
+# 영원히 막힌다(닭-달걀). 신규 스크립트를 추가할 때마다 재발하는 조건이므로 비차단이 답이다.
+# 대신 조용히 넘기지 않는다 — 배포 가드가 없는 상태로 진행한다는 사실은 보여야 한다.
+if [ -f scripts/check-install-sync.mjs ]; then
+  node scripts/check-install-sync.mjs && INSTALL_ST=0 || INSTALL_ST=$?
+  # 3 = 스큐 확정, 그 외 비-0 = 검사기 자체 실패(node 는 예외·문법오류를 모두 1 로 낸다)
+  case "${INSTALL_ST}" in
+    0) ;;
+    3)
+      echo "   현재 브랜치는 ${LATEST} 입니다 — 이 라인의 락파일 기준으로 설치됩니다."
+      echo "   머지·bump 는 시작하지 않았습니다. 설치를 맞춘 뒤 같은 명령을 다시 실행하세요:"
+      echo "     yarn install && yarn staging:merge ${BRANCHES[*]}"
+      exit 1
+      ;;
+    *)
+      echo "   설치 상태 문제가 아닙니다 — yarn install 로는 해결되지 않습니다."
+      echo "   머지·bump 는 시작하지 않았습니다. 검사기를 고친 뒤 다시 실행하세요."
+      exit 1
+      ;;
+  esac
+else
+  echo "ℹ️  이 라인(${LATEST})에는 설치 정합성 검사가 아직 없습니다 — 건너뜁니다."
+  echo "   pre-push 타입 검사가 실패하면 라인 스큐(node_modules 불일치)를 먼저 의심하세요."
 fi
 
 # 빈 배포 판정 기준 = 롤백 기준 SHA = 머지를 시작하기 직전의 tip("git pull 이후").
@@ -209,14 +228,26 @@ trap - ERR
 if ! PUSH_OUT="$(git push origin "HEAD:${LATEST}" 2>&1)"; then
   printf '%s\n' "${PUSH_OUT}"
   echo
-  # 원인을 메시지 문구가 아니라 '상태' 로 판정한다(git 로케일·버전 무관).
-  #   ⓐ --no-verify 재시도(dry-run)가 성공한다 → 막은 것은 로컬 훅뿐이다.
-  #      원격은 도달 가능하고 fast-forward 도 가능하다는 뜻이므로 git pull 은 무의미하다.
-  #   ⓑ 아니면 원격 tip 이 우리 계보 밖으로 갔는지 확인한다 → non-fast-forward.
-  #   ⓒ 둘 다 아니면 그 외(네트워크·권한·원격 설정).
-  # ⓐ·ⓑ 를 뭉개고 모두에게 'git pull' 을 안내하면 pre-push 거부에서도 pull 이 실행되고,
-  # 그 위에 staging:deploy 가 patch 를 또 올려 버전이 두 번 오른다(2026-09 사건).
-  if git push --no-verify --dry-run origin "HEAD:${LATEST}" >/dev/null 2>&1; then
+  # 원인 판정 — 값싼 신호부터. dry-run 은 마지막 폴백이다.
+  #   ⓐ 원격이 거부했다는 표시가 출력에 있으면 원격 문제로 확정한다. `--dry-run` 은 ref 를
+  #      실제로 보내지 않아 원격 pre-receive 훅·브랜치 보호가 돌지 않으므로, 그 경우에도
+  #      dry-run 은 성공한다 — 탐침만 믿으면 원격 거부를 로컬 훅 실패로 오분류한다(Codex 리뷰 P2).
+  #   ⓑ husky 가 낸 로컬 훅 실패 마커가 있으면 로컬 훅으로 확정한다.
+  #   ⓒ 표시가 없으면 dry-run(--no-verify) 탐침 — 성공하면 막은 것은 로컬 훅뿐이다.
+  #   ⓓ 아니면 원격 tip 이 우리 계보 밖인지 확인한다 → non-fast-forward.
+  #   ⓔ 그 외(네트워크·권한 등).
+  # 뭉개고 모두에게 'git pull' 을 안내하면 pre-push 거부에서도 pull 이 실행되고, 그 위에
+  # 재실행이 patch 를 또 올려 버전이 두 번 오른다(2026-09 사건).
+  if printf '%s' "${PUSH_OUT}" | grep -qE 'remote rejected|pre-receive hook declined|protected branch'; then
+    rollback_baseline_ref
+    restore_branch
+    echo "❌ 원격이 push 를 거부했습니다 — 로컬 검사(.husky/pre-push)는 통과했습니다."
+    echo "   위 remote 출력이 원인입니다(브랜치 보호 규칙·서버 훅·권한). ${LATEST} 는 시작 상태로 되돌렸습니다."
+    echo "   → 원격 설정을 확인한 뒤 같은 명령을 다시 실행하세요: yarn staging:merge ${BRANCHES[*]}"
+    exit 1
+  fi
+  if printf '%s' "${PUSH_OUT}" | grep -qE 'husky - pre-push|pre-push (hook|script)' \
+    || git push --no-verify --dry-run origin "HEAD:${LATEST}" >/dev/null 2>&1; then
     rollback_baseline_ref
     restore_branch
     echo "❌ push 가 로컬 검사(.husky/pre-push)에 막혔습니다 — 원격은 변경되지 않았습니다."

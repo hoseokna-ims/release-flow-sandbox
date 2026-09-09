@@ -219,4 +219,53 @@ ok "yarn 호출 없음" $?
 [ "$(grep -cE "execFileSync\(\s*'git'" "${SRC}/scripts/check-install-sync.mjs")" -eq 1 ]
 ok "외부 명령은 git show 하나뿐 (읽기 전용)" $?
 
+# ══ E11·E12  이식 과도기 — 라인에 검사기가 아직 없거나 고장난 경우 ══════
+# 실측(2026-09): 이식 커밋은 feature 브랜치에만 있는데 merge-staging.sh 는 실행 도중
+# staging 라인으로 switch 한다. 그 라인에 이 파일이 없으면 MODULE_NOT_FOUND(exit 1)로 죽고,
+# 호출부가 그것을 '설치 스큐' 로 오인해 잘못된 안내를 냈다.
+# 차단은 답이 아니다 — 이 파일을 추가하는 이식 머지 자체가 영원히 막힌다(닭-달걀).
+
+case_hdr "E11 staging 라인에 검사기가 없음 → 안내 후 계속 (머지·배포 성공)"
+fixture_staging e11
+git switch -q staging/0.1
+git rm -q scripts/check-install-sync.mjs
+git commit -qm "chore: 검사기가 아직 없는 라인"
+git push -q origin staging/0.1
+git switch -q feature/FE-X
+run "bash scripts/merge-staging.sh feature/FE-X"
+expect_success                                   # 데드락 금지
+expect_has "설치 정합성 검사가 아직 없습니다"      # 무음 금지
+expect_absent "Cannot find module"               # 크래시가 새어 나오지 않는다
+expect_ver 0.1.1
+head_is feature/FE-X
+
+case_hdr "E12 검사기 자체가 고장 → 스큐와 다른 안내로 차단 (exit 2 분기)"
+fixture_staging e12
+git switch -q staging/0.1
+printf 'throw new Error("boom");\n' > scripts/check-install-sync.mjs
+git commit -qam "chore: 고장난 검사기"
+git push -q origin staging/0.1
+git switch -q feature/FE-X
+run "bash scripts/merge-staging.sh feature/FE-X"
+expect_blocked
+expect_has "설치 상태 문제가 아닙니다"             # 호출부가 낸 '검사기 실패' 안내
+expect_has "yarn install 로는 해결되지 않습니다"
+expect_absent "설치를 맞춘 뒤"                    # 스큐 안내로 오인하지 않는다
+expect_ver 0.1.0                                 # bump 미실행
+
+# 검사기가 통째로 깨진 경우(E12)는 node 가 exit 1 로 끝내므로 호출부 메시지만 나온다.
+# 검사기가 살아 있고 내부에서 예외를 만난 경우는 스스로 exit 2 로 끝내며 자기 메시지를 낸다.
+case_hdr "E12b 검사기가 내부 예외로 실패 → exit 2, 스큐와 다른 안내로 차단"
+fixture_staging e12b
+declare_dep staging/0.1 '^1.0.0'
+lock_v1 1.3.0 1.3.0                              # node_modules 까지 만든다(스큐 없음)
+rm -f yarn.lock && mkdir yarn.lock               # 읽으면 EISDIR — 검사기 내부에서 예외
+git switch -q feature/FE-X
+run "bash scripts/merge-staging.sh feature/FE-X"
+expect_blocked
+expect_has "검사기 자체가 실패했습니다"            # 검사기가 스스로 낸 메시지 (exit 2)
+expect_has "yarn install 로는 해결되지 않습니다"
+expect_absent "설치를 맞춘 뒤"
+expect_ver 0.1.0
+
 harness_summary
